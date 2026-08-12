@@ -10,6 +10,7 @@
 import base64
 import binascii
 import io
+import random
 
 from flask import Flask, request, jsonify, render_template
 from PIL import Image
@@ -127,10 +128,28 @@ PRODUCTS = {
 }
 
 FACE_RULE = (
-    "Absolutely do not show the person's face. Crop the frame so nothing "
-    "above the chin or jawline is visible — exactly like Korean online "
-    "clothing-store 'fitting cut' (착용컷) product photos, where the "
-    "model's face is never shown."
+    "HEAD CROP — strict: the top edge of the frame must cut across the "
+    "BASE OF THE NECK, at roughly collarbone height. No face, no chin, "
+    "no jawline, no mouth, no ears, no hair and no head of any kind may "
+    "appear anywhere in the image, not even partially, blurred or at the "
+    "very edge. If any part of the chin or jaw would enter the frame, "
+    "crop lower until it is gone. This is how Korean online clothing "
+    "stores shoot 착용컷 — the body starts below the neck. "
+)
+
+# 판매 상품이 컷마다 달라지는 것을 막는 잠금 규칙. 두 모드 모두에 들어간다.
+GARMENT_LOCK_RULE = (
+    "PRODUCT LOCK — the single most important requirement: the {focus} "
+    "in the output must be the SAME physical item as in the reference "
+    "photo, not a similar-looking one. Match its exact colour and shade, "
+    "fabric and weave, sheen, silhouette and cut, length, collar and "
+    "neckline shape, sleeve length and cuff, hem finish, pocket "
+    "placement, buttons, zips, drawstrings, stitching colour, and any "
+    "print, logo, lettering or graphic — including its exact artwork, "
+    "size and position on the garment. Do not redesign it, do not "
+    "restyle it, do not swap it for another product, and do not add or "
+    "remove any detail. Only the way it folds and drapes may change, "
+    "because the pose changed. "
 )
 
 # 레퍼런스 영상의 핵심 포즈 코칭: 꼿꼿이 서지 말고 '엉거주춤하게'.
@@ -263,61 +282,110 @@ BACKGROUNDS = {
         "off, so the exposure is calm and slightly deep rather than flat "
         "and bright"
     ),
-    "auto": (
-        "a calm, tastefully understated location — vary it each time "
-        "between a quiet minimal interior, a clean architectural exterior, "
-        "and a soft natural setting"
+    # 네이버 패션타운 남성의류 랭킹에서 가장 흔한 브랜드형 배경.
+    "seamless": (
+        "against a clean seamless studio backdrop in soft off-white, warm "
+        "ivory or pale greige, curving gently into the floor with no "
+        "visible corner line. One large soft light source from the side "
+        "gives the body quiet dimension and lays a single soft shadow on "
+        "the backdrop. Nothing else in the frame — the garment carries the "
+        "whole image, the way premium Korean brand product pages shoot it"
+    ),
+    "concrete_wall": (
+        "against a raw poured-concrete wall with faint form-tie holes, "
+        "subtle staining and fine surface grain, the wall running "
+        "diagonally across the frame. Hard afternoon sunlight rakes across "
+        "it, leaving a crisp shadow edge and giving the texture real depth"
     ),
     "minimal_wall": (
-        "against a smooth off-white, beige or warm grey plaster wall, with "
-        "soft directional daylight and a gentle shadow falling across it"
+        "against a smooth off-white, warm beige or pale grey plaster wall "
+        "with faint trowel texture. Low directional daylight rakes across "
+        "it so a soft gradient falls from one side to the other, and a "
+        "single clean shadow anchors the body to the wall"
     ),
     "sunlit_room": (
-        "in a quiet minimal interior with a large window, warm daylight "
-        "falling across a wooden or polished concrete floor, and very few "
-        "objects in the frame"
+        "in a quiet minimal interior where late-afternoon sun comes "
+        "through a tall window and lays warm geometric light patches "
+        "across a pale wall and a wooden or polished concrete floor. A "
+        "sheer curtain softens one edge of the light; almost nothing else "
+        "is in the frame"
     ),
     "gallery": (
-        "in a bright gallery-like space with clean white walls, generous "
-        "empty space and soft even light"
+        "in a bright gallery-like space — tall white walls, a pale "
+        "seamless floor, generous empty air around the body, and soft even "
+        "top light with only the faintest shadow. Calm, spacious and "
+        "deliberately understated"
     ),
     "quiet_cafe": (
-        "in a refined, quiet cafe interior with wood, stone and linen "
-        "textures, soft window light, and no visible signage or lettering"
+        "in a refined quiet cafe interior with warm wood, stone and linen "
+        "textures, a plaster wall, and soft light falling from a window "
+        "just out of frame. No signage, no lettering, no clutter — just "
+        "one or two calm furniture edges giving the space depth"
     ),
     "architecture": (
-        "beside clean modern architecture — smooth stone steps, a concrete "
-        "column or a simple façade — with calm geometry and soft daylight"
+        "beside clean modern architecture — a smooth concrete column, a "
+        "run of stone steps, a deep doorway reveal or a simple façade. "
+        "Strong architectural lines cut diagonally through the frame and "
+        "soft daylight models the surfaces without harshness"
+    ),
+    "stairwell": (
+        "on a quiet stairwell landing — a metal handrail, a painted or "
+        "concrete wall, and the diagonal line of the stair edge running "
+        "through the frame. Daylight falls from above, giving soft "
+        "top-down modelling and a calm enclosed mood"
     ),
     "park_path": (
-        "on a quiet tree-lined path with soft greenery, dappled sunlight "
-        "and a clean paved walkway"
+        "on a quiet tree-lined path where dappled sunlight falls through "
+        "the leaves onto a clean paved walkway. Soft layered greenery "
+        "recedes behind the body, deep enough to give the frame air"
     ),
     "forest": (
-        "on a calm forest trail with tall trees, soft green foliage and "
-        "gentle light filtering through the leaves"
+        "on a calm forest trail with tall slender trunks, soft green "
+        "foliage, and gentle light filtering down through the canopy in "
+        "quiet shafts. Cool green shade with warm highlights"
     ),
     "field": (
-        "in an open grassy field or meadow with a soft natural horizon and "
-        "warm late-afternoon light"
+        "in an open grassy field or meadow with a soft low horizon, dry "
+        "golden grass moving slightly in the breeze, and warm "
+        "late-afternoon sun backlighting the scene"
     ),
     "seaside": (
-        "near a calm seaside — soft sand or a quiet coastal path — with "
-        "muted natural colours and diffused daylight"
+        "near a calm seaside — pale sand or a quiet concrete coastal path "
+        "— with muted blue-grey water, a soft horizon line and bright but "
+        "diffused overcast daylight"
     ),
     "rooftop": (
-        "on a clean open rooftop with an unobstructed sky, soft daylight "
-        "and minimal surrounding structures"
+        "on a clean open rooftop with an unobstructed pale sky, a low "
+        "parapet wall, soft daylight and almost nothing built around. "
+        "Open, airy and quiet"
     ),
     "street_soft": (
         "on a calm, tidy city street with restrained modern storefronts, "
-        "soft daylight and only minimal, unobtrusive signage"
+        "large clean glass, pale stone paving and soft daylight. Only "
+        "minimal unobtrusive signage, no crowds, no visual noise"
     ),
     "golden_hour": (
-        "outdoors during golden hour, with warm low sunlight, long soft "
-        "shadows and a clean uncluttered setting"
+        "outdoors during golden hour, with warm low sun raking across the "
+        "scene, long soft shadows stretching across the ground, and a "
+        "clean uncluttered setting glowing in amber light"
     ),
 }
+
+# '랜덤'일 때 실제로 돌려 쓸 후보들 (studio/auto 자신은 제외).
+RANDOM_POOL = [
+    "seamless", "concrete_wall", "minimal_wall", "sunlit_room", "gallery",
+    "quiet_cafe", "architecture", "stairwell", "park_path", "forest",
+    "field", "seaside", "rooftop", "street_soft", "golden_hour", "studio",
+]
+
+# 랜덤일 때 옷에 어울리는 곳을 고르도록 유도.
+GARMENT_AWARE_RULE = (
+    "Choose the setting so it flatters THIS specific garment: read its "
+    "colour, tone, material and mood from the reference photo, then pick "
+    "surroundings whose colours sit in harmony with it and make it stand "
+    "out rather than blend in. A pale garment wants a deeper or warmer "
+    "backdrop; a dark garment wants a lighter, airier one. "
+)
 
 BACKGROUND_GROUPS = [
     (
@@ -330,6 +398,7 @@ BACKGROUND_GROUPS = [
     (
         "실내 · 미니멀",
         [
+            ("seamless", "무봉제 배경 (브랜드형)"),
             ("minimal_wall", "미니멀 벽"),
             ("sunlit_room", "볕 드는 실내"),
             ("gallery", "갤러리"),
@@ -349,7 +418,9 @@ BACKGROUND_GROUPS = [
     (
         "도시 (절제)",
         [
+            ("concrete_wall", "콘크리트 벽"),
             ("architecture", "모던 건축"),
+            ("stairwell", "계단참"),
             ("street_soft", "차분한 거리"),
             ("rooftop", "루프탑"),
         ],
@@ -412,10 +483,9 @@ PROMPT_NEW_SCENE = (
     "{detail_rule}Using the exact same {focus} shown in the reference "
     "photo, generate a new photorealistic image as if shot by a "
     "professional fashion e-commerce photographer on location. "
+    "{garment_lock}"
     "{model_rule}{framing} {face_rule} {scene_block} {mood_rule}Set the "
-    "pose to: {pose}. {pose_style}{styling_rule}{accessory_rule}Keep the "
-    "item's colour, fabric, texture, fit and details exactly consistent "
-    "and clearly recognizable with the reference photo. "
+    "pose to: {pose}. {pose_style}{styling_rule}{accessory_rule}"
     "Keep the whole frame in natural sharp focus — the background must be "
     "clearly readable, NOT blurred, and must never be pixelated, "
     "mosaicked or smeared. Soft natural lighting, true-to-life colour, "
@@ -429,10 +499,9 @@ PROMPT_SAME_SCENE = (
     "{detail_rule}Edit the FIRST supplied photo so that only the model's "
     "pose changes. "
     "{scene_block} The new pose is: {pose}. {pose_style}"
-    "{framing} {face_rule} {accessory_rule}"
+    "{framing} {face_rule} {accessory_rule}{garment_lock}"
     "Re-render the {focus} so it hangs and folds correctly for the new "
-    "pose, while keeping its colour, fabric, texture, fit, seams and "
-    "print exactly as in the supplied photo. Photorealistic, matching "
+    "pose only. Photorealistic, matching "
     "the supplied photo's existing sharpness and grain, with no "
     "pixelation, mosaic or smearing anywhere in the frame. "
     "Output only the image, with no text description."
@@ -501,6 +570,7 @@ def process():
     product = PRODUCTS[product_type]
 
     extra = {}
+    scene_blocks = None  # 컷마다 배경이 달라지는 경우에만 채운다
     if mode == "poseset" or keep_scene:
         # 보낸 사진을 그대로 두고 서 있는 포즈만 바꾼다. 배경/코디/모델은 건드리지 않는다.
         count = max(1, min(count, POSESET_MAX))
@@ -508,17 +578,31 @@ def process():
         scene_block = KEEP_SCENE_RULE
         template = PROMPT_SAME_SCENE
     else:
+        # "auto"는 BACKGROUNDS의 항목이 아니라 '컷마다 랜덤'을 뜻하는 특수값이다.
         background = request.form.get("background", "studio")
-        if background not in BACKGROUNDS:
+        if background != "auto" and background not in BACKGROUNDS:
             background = "studio"
         count = max(1, min(count, QUICK_MAX))
         pose_list = POSES
-        scene_block = (
-            BACKGROUND_RULE_TEMPLATE.format(setting=BACKGROUNDS[background])
-            + " "
-            + LOCATION_RULE_VARY
-        )
         template = PROMPT_NEW_SCENE
+
+        if background == "auto":
+            # 진짜 랜덤: 매 요청마다 순서를 섞어 컷마다 다른 장소를 쓴다.
+            picks = random.sample(RANDOM_POOL, min(count, len(RANDOM_POOL)))
+            scene_blocks = [
+                BACKGROUND_RULE_TEMPLATE.format(setting=BACKGROUNDS[k])
+                + " "
+                + GARMENT_AWARE_RULE
+                + LOCATION_RULE_VARY
+                for k in picks
+            ]
+            scene_block = scene_blocks[0]
+        else:
+            scene_block = (
+                BACKGROUND_RULE_TEMPLATE.format(setting=BACKGROUNDS[background])
+                + " "
+                + LOCATION_RULE_VARY
+            )
 
         styling = request.form.get("styling", "keep")
         if styling not in STYLINGS:
@@ -553,11 +637,13 @@ def process():
     try:
         for i in range(count):
             pose = pose_list[i % len(pose_list)]
+            block = scene_blocks[i] if scene_blocks else scene_block
             prompt = template.format(
                 focus=product["focus"],
                 framing=product["framing"],
                 face_rule=FACE_RULE,
-                scene_block=scene_block,
+                garment_lock=GARMENT_LOCK_RULE.format(focus=product["focus"]),
+                scene_block=block,
                 pose_style=POSE_STYLE_RULE,
                 accessory_rule=accessory_rule,
                 pose=pose,
