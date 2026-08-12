@@ -246,6 +246,16 @@
         </div>
       </div>
 
+      <div class="field" id="stylingField">
+        <label class="lbl">코디 스타일 <span style="color:var(--muted);font-weight:400">(판매 상품은 그대로, 나머지 옷만 변경)</span></label>
+        <div class="chips">
+          {% for key, label in stylings %}
+          <input type="radio" id="st-{{ key }}" name="styling" value="{{ key }}" {% if key == 'keep' %}checked{% endif %}>
+          <label for="st-{{ key }}">{{ label }}</label>
+          {% endfor %}
+        </div>
+      </div>
+
       <div class="field" id="bgField">
         <label class="lbl">배경 분위기</label>
         {% for group, items in background_groups %}
@@ -323,11 +333,13 @@ const countInput = document.getElementById("count");
 const countHelp = document.getElementById("countHelp");
 const modeHelp = document.getElementById("modeHelp");
 const bgField = document.getElementById("bgField");
+const stylingField = document.getElementById("stylingField");
 
 function applyMode() {
   const poseset = document.getElementById("mode-poseset").checked;
-  // 포즈 모음은 올린 사진의 배경을 그대로 쓰므로 배경 선택 자체가 필요 없다.
+  // 포즈 모음은 올린 사진을 그대로 쓰므로 배경·코디 선택이 필요 없다.
   bgField.hidden = poseset;
+  stylingField.hidden = poseset;
   countInput.min = 1;
   countInput.max = poseset ? POSESET_MAX : QUICK_MAX;
   if (+countInput.value > +countInput.max) countInput.value = countInput.max;
@@ -389,12 +401,6 @@ function renderResults(results, prefix, offerPoseSet) {
     img.src = item.image;
     img.alt = `생성된 피팅컷 ${i + 1}`;
     fig.appendChild(img);
-
-    if (item.caption) {
-      const cap = document.createElement("figcaption");
-      cap.textContent = item.caption;
-      fig.appendChild(cap);
-    }
 
     if (offerPoseSet) {
       const btn = document.createElement("button");

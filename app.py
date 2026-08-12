@@ -152,6 +152,71 @@ STANDING_POSES = [
     "camera, showing the side line of the outfit",
 ]
 
+# 모델 표준 — 사용자가 제시한 기준 컷(근육질 남성 모델)에 맞춰 매번 동일하게.
+MODEL_RULE = (
+    "The model must be the same standard model every time: a young Korean "
+    "man with an athletic, visibly muscular build — broad shoulders, a "
+    "defined chest and clearly developed arms, a trim waist, tall "
+    "well-proportioned legs, and a warm light-tan skin tone. Keep this "
+    "exact body type, build and skin tone consistent across every image. "
+)
+
+# 판매 상품은 절대 건드리지 않고 '나머지 코디'만 바꾼다.
+STYLINGS = {
+    "keep": {"label": "그대로", "desc": ""},
+    "minimal": {
+        "label": "미니멀 베이직",
+        "desc": (
+            "a plain fine-gauge tee or knit, straight clean-cut trousers, "
+            "and low-profile leather sneakers, all in neutral tones "
+            "(white, black, grey, beige)"
+        ),
+    },
+    "street": {
+        "label": "스트릿",
+        "desc": (
+            "an oversized tee or hoodie, wide cargo or loose denim, a ball "
+            "cap, and chunky dad sneakers"
+        ),
+    },
+    "amekaji": {
+        "label": "아메카지",
+        "desc": (
+            "a washed chambray or flannel shirt worn loose, wide chino "
+            "trousers, and canvas sneakers, in earthy washed tones"
+        ),
+    },
+    "cityboy": {
+        "label": "모던 시티보이",
+        "desc": (
+            "an oversized crisp shirt tucked loosely, wide pleated slacks, "
+            "and leather loafers, in muted refined tones"
+        ),
+    },
+    "sporty": {
+        "label": "스포티",
+        "desc": (
+            "a track top or lightweight windbreaker, tapered track pants, "
+            "and running sneakers"
+        ),
+    },
+    "workwear": {
+        "label": "워크웨어",
+        "desc": (
+            "a boxy work jacket or coverall shirt, sturdy carpenter "
+            "trousers, and worn leather boots"
+        ),
+    },
+}
+
+STYLING_RULE_TEMPLATE = (
+    "Restyle the rest of the outfit — every garment EXCEPT the {focus} — "
+    "as {desc}. The {focus} itself must stay exactly as it is in the "
+    "reference photo, unchanged in colour, fabric, cut and detail; only "
+    "the surrounding items change so the look reads as a deliberate "
+    "coordinated outfit. "
+)
+
 POSE_STYLE_RULE = (
     "Posture direction, following Korean fitting-cut convention: the "
     "stance must look loose and slightly slouched rather than upright and "
@@ -312,16 +377,18 @@ ACCESSORY_RULE_TEMPLATE = (
 
 # 새 장소에서 찍은 것처럼 만드는 경우
 PROMPT_NEW_SCENE = (
-    "Using the exact same person and the exact same {focus} shown in the "
-    "reference photo, generate a new photorealistic image as if shot by a "
-    "professional fashion e-commerce photographer on location. "
-    "{framing} {face_rule} {scene_block} Set the pose "
-    "to: {pose}. {pose_style}{accessory_rule}Keep the item's colour, "
-    "fabric, texture, fit and details exactly consistent and clearly "
-    "recognizable with the reference photo. Soft natural lighting, clean "
-    "colour grading, shallow depth of field, high-resolution editorial "
-    "quality. Before generating the image, briefly describe the scene and "
-    "pose in one English sentence."
+    "Using the exact same {focus} shown in the reference photo, generate "
+    "a new photorealistic image as if shot by a professional fashion "
+    "e-commerce photographer on location. "
+    "{model_rule}{framing} {face_rule} {scene_block} Set the pose "
+    "to: {pose}. {pose_style}{styling_rule}{accessory_rule}Keep the "
+    "item's colour, fabric, texture, fit and details exactly consistent "
+    "and clearly recognizable with the reference photo. "
+    "Keep the whole frame in natural sharp focus — the background must be "
+    "clearly readable, NOT blurred, and must never be pixelated, "
+    "mosaicked or smeared. Soft natural lighting, true-to-life colour, "
+    "high-resolution quality. "
+    "Output only the image, with no text description."
 )
 
 # 보낸 사진을 그대로 두고 포즈만 바꾸는 경우.
@@ -333,9 +400,9 @@ PROMPT_SAME_SCENE = (
     "Re-render the {focus} so it hangs and folds correctly for the new "
     "pose, while keeping its colour, fabric, texture, fit, seams and "
     "print exactly as in the supplied photo. Photorealistic, matching "
-    "the supplied photo's existing sharpness and grain. Before "
-    "generating the image, describe the new pose in one short English "
-    "sentence."
+    "the supplied photo's existing sharpness and grain, with no "
+    "pixelation, mosaic or smearing anywhere in the frame. "
+    "Output only the image, with no text description."
 )
 
 
@@ -347,6 +414,7 @@ def index():
         poseset_max=POSESET_MAX,
         background_groups=BACKGROUND_GROUPS,
         products=[(key, val["label"]) for key, val in PRODUCTS.items()],
+        stylings=[(key, val["label"]) for key, val in STYLINGS.items()],
     )
 
 
@@ -391,8 +459,9 @@ def process():
         product_type = "top"
     product = PRODUCTS[product_type]
 
+    extra = {}
     if mode == "poseset" or keep_scene:
-        # 보낸 사진을 그대로 두고 서 있는 포즈만 바꾼다. 배경 선택은 쓰지 않는다.
+        # 보낸 사진을 그대로 두고 서 있는 포즈만 바꾼다. 배경/코디/모델은 건드리지 않는다.
         count = max(1, min(count, POSESET_MAX))
         pose_list = STANDING_POSES
         scene_block = KEEP_SCENE_RULE
@@ -409,6 +478,17 @@ def process():
             + LOCATION_RULE_VARY
         )
         template = PROMPT_NEW_SCENE
+
+        styling = request.form.get("styling", "keep")
+        if styling not in STYLINGS:
+            styling = "keep"
+        desc = STYLINGS[styling]["desc"]
+        extra["styling_rule"] = (
+            STYLING_RULE_TEMPLATE.format(focus=product["focus"], desc=desc)
+            if desc
+            else ""
+        )
+        extra["model_rule"] = MODEL_RULE
 
     accessories = (request.form.get("accessories") or "").strip()
     accessory_rule = (
@@ -434,6 +514,7 @@ def process():
                 pose_style=POSE_STYLE_RULE,
                 accessory_rule=accessory_rule,
                 pose=pose,
+                **extra,
             )
             response = client.models.generate_content(
                 model=MODEL,
@@ -442,16 +523,13 @@ def process():
                     response_modalities=[types.Modality.TEXT, types.Modality.IMAGE],
                 ),
             )
-            caption = None
             image_data_url = None
             for part in response.parts:
-                if part.text and not caption:
-                    caption = part.text.strip()
-                elif part.inline_data:
+                if part.inline_data:
                     b64 = base64.b64encode(part.inline_data.data).decode()
                     image_data_url = f"data:image/png;base64,{b64}"
             if image_data_url:
-                results.append({"image": image_data_url, "caption": caption or ""})
+                results.append({"image": image_data_url})
     except genai_errors.ClientError as e:
         status = 401 if e.code in (401, 403) else 400
         return jsonify(error=f"요청이 거부되었습니다: {e.message}"), status
