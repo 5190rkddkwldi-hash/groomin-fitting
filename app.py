@@ -124,8 +124,32 @@ FACE_RULE = (
     "model's face is never shown."
 )
 
+# 레퍼런스 영상의 핵심 포즈 코칭: 꼿꼿이 서지 말고 '엉거주춤하게'.
+# 골반을 살짝 앞으로 내밀고 무릎을 풀면 옷이 자연스럽게 떨어진다.
+POSE_STYLE_RULE = (
+    "Posture direction, following Korean fitting-cut convention: the "
+    "stance must look loose and slightly slouched rather than upright and "
+    "formal — hips pushed a little forward, knees soft and slightly bent, "
+    "shoulders dropped and relaxed, body weight settled unevenly on one "
+    "leg. This faintly awkward, unposed stance is what makes the garment "
+    "hang and drape naturally. Never a stiff, straight-backed runway pose. "
+)
+
 # 심플하되 적당히 고급스러운 장소 위주. 간판/네온 같은 과한 도시 요소는 배제.
 BACKGROUNDS = {
+    # 레퍼런스 영상(쇼핑몰 빌드업 테크트리)의 렌탈 스튜디오 셋업을 그대로 재현.
+    "studio": (
+        "in a bright, minimal Korean rental photo studio — a clean "
+        "off-white wall and a smooth grey concrete floor, with sheer "
+        "white curtains over a large window. Keep a few tasteful props "
+        "toward the edge of the frame: a slim chrome-and-glass shelving "
+        "unit holding a couple of glass cups and a white sphere lamp, a "
+        "small round cafe table, and a monstera plant. Lit only by soft "
+        "natural daylight from the window, with gentle patches of "
+        "sunlight falling on the wall and floor; artificial lights are "
+        "off, so the exposure is calm and slightly deep rather than flat "
+        "and bright"
+    ),
     "auto": (
         "a calm, tastefully understated location — vary it each time "
         "between a quiet minimal interior, a clean architectural exterior, "
@@ -183,7 +207,13 @@ BACKGROUNDS = {
 }
 
 BACKGROUND_GROUPS = [
-    ("추천", [("auto", "랜덤 (매번 다르게)")]),
+    (
+        "추천",
+        [
+            ("studio", "렌탈 스튜디오 ★"),
+            ("auto", "랜덤 (매번 다르게)"),
+        ],
+    ),
     (
         "실내 · 미니멀",
         [
@@ -244,8 +274,7 @@ PROMPT_TEMPLATE = (
     "reference photo, generate a new photorealistic image as if shot by a "
     "professional fashion e-commerce photographer on location. "
     "{framing} {face_rule} {background_rule} {location_rule} Set the pose "
-    "to: {pose}. The pose must look natural, relaxed and unforced — never "
-    "stiff or exaggerated. {accessory_rule}Keep the item's colour, "
+    "to: {pose}. {pose_style}{accessory_rule}Keep the item's colour, "
     "fabric, texture, fit and details exactly consistent and clearly "
     "recognizable with the reference photo. Soft natural lighting, clean "
     "colour grading, shallow depth of field, high-resolution editorial "
@@ -292,15 +321,15 @@ def process():
         product_type = "top"
     product = PRODUCTS[product_type]
 
-    background = request.form.get("background", "auto")
+    background = request.form.get("background", "studio")
     if background not in BACKGROUNDS:
-        background = "auto"
+        background = "studio"
 
     if mode == "poseset":
         # 배경 하나를 고정하고 엄선된 포즈만 바꿔가며 촬영한 것처럼 만든다.
         count = max(POSESET_MIN, min(count, POSESET_MAX))
         if background == "auto":
-            background = "minimal_wall"
+            background = "studio"
         location_rule = LOCATION_RULE_FIXED
     else:
         count = max(1, min(count, QUICK_MAX))
@@ -332,6 +361,7 @@ def process():
                 face_rule=FACE_RULE,
                 background_rule=background_rule,
                 location_rule=location_rule,
+                pose_style=POSE_STYLE_RULE,
                 accessory_rule=accessory_rule,
                 pose=pose,
             )

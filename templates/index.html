@@ -243,7 +243,7 @@
           <div class="group-name">{{ group }}</div>
           <div class="chips">
             {% for key, label in items %}
-            <input type="radio" id="bg-{{ key }}" name="background" value="{{ key }}" {% if key == 'auto' %}checked{% endif %}>
+            <input type="radio" id="bg-{{ key }}" name="background" value="{{ key }}" {% if key == 'studio' %}checked{% endif %}>
             <label for="bg-{{ key }}">{{ label }}</label>
             {% endfor %}
           </div>
@@ -324,7 +324,7 @@ function applyMode() {
     countHelp.textContent =
       `엄선된 포즈 ${POSESET_MIN}~${POSESET_MAX}가지로 만듭니다. 장수가 많아 5분 이상 걸릴 수 있어요.`;
     modeHelp.textContent =
-      "고른 배경 한 곳에서 포즈만 바꿔가며 촬영한 것처럼 만듭니다. ‘랜덤’을 고르면 미니멀 벽으로 고정됩니다.";
+      "고른 배경 한 곳에서 포즈만 바꿔가며 촬영한 것처럼 만듭니다. ‘랜덤’을 고르면 렌탈 스튜디오로 고정됩니다.";
   } else {
     countInput.min = 1;
     countInput.max = QUICK_MAX;
