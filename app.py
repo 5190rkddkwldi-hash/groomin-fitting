@@ -8,6 +8,7 @@
 """
 
 import base64
+import binascii
 import io
 
 from flask import Flask, request, jsonify, render_template
@@ -126,6 +127,31 @@ FACE_RULE = (
 
 # 레퍼런스 영상의 핵심 포즈 코칭: 꼿꼿이 서지 말고 '엉거주춤하게'.
 # 골반을 살짝 앞으로 내밀고 무릎을 풀면 옷이 자연스럽게 떨어진다.
+# 이미 마음에 든 컷을 기준으로 '같은 자리에서 포즈만' 바꿀 때 쓰는 12종.
+# 앉기/걷기/뒷모습 없이 전부 서 있는 자세이며, 손 위치·체중·각도만 미세하게 다르다.
+STANDING_POSES = [
+    "standing squarely toward the camera, both arms hanging naturally at "
+    "the sides",
+    "standing with one hand slipped into a pocket, the other arm loose at "
+    "the side",
+    "standing with both hands in pockets, elbows relaxed slightly outward",
+    "body turned a few degrees to one side in a soft three-quarter angle, "
+    "arms relaxed",
+    "body turned a few degrees to the opposite side, weight shifted onto "
+    "the back leg",
+    "weight settled onto the left leg, right knee softened and turned "
+    "slightly inward",
+    "weight settled onto the right leg, left foot placed a little forward",
+    "one hand lightly holding the hem or side seam of the garment, "
+    "drawing the eye to its drape",
+    "arms loosely crossed low over the torso, shoulders dropped",
+    "one hand resting on the hip, the other hanging naturally",
+    "one hand lifted to adjust a sleeve or strap, the movement caught "
+    "mid-gesture",
+    "standing almost in profile with the shoulders opened back toward the "
+    "camera, showing the side line of the outfit",
+]
+
 POSE_STYLE_RULE = (
     "Posture direction, following Korean fitting-cut convention: the "
     "stance must look loose and slightly slouched rather than upright and "
@@ -262,6 +288,16 @@ LOCATION_RULE_FIXED = (
     "background, lighting and time of day consistent, changing only the "
     "camera angle and the pose."
 )
+# 고른 컷을 그대로 이어받아 포즈만 바꿀 때. 배경 프리셋 대신 이 규칙을 쓴다.
+KEEP_SCENE_RULE = (
+    "CRITICAL — this must look like another frame from the very same "
+    "photo session, taken seconds later: reproduce the EXACT same "
+    "location, background, props, wall, floor, lighting, time of day, "
+    "colour grading, camera angle, camera height, distance and crop as "
+    "the reference photo. Keep the same model with the same body, skin "
+    "tone and hair, and the exact same outfit, shoes and accessories, "
+    "unchanged in every detail. Change ONLY the body pose."
+)
 
 ACCESSORY_RULE_TEMPLATE = (
     "Additionally style the look with: {accessories}. Add these naturally "
@@ -273,7 +309,7 @@ PROMPT_TEMPLATE = (
     "Using the exact same person and the exact same {focus} shown in the "
     "reference photo, generate a new photorealistic image as if shot by a "
     "professional fashion e-commerce photographer on location. "
-    "{framing} {face_rule} {background_rule} {location_rule} Set the pose "
+    "{framing} {face_rule} {scene_block} Set the pose "
     "to: {pose}. {pose_style}{accessory_rule}Keep the item's colour, "
     "fabric, texture, fit and details exactly consistent and clearly "
     "recognizable with the reference photo. Soft natural lighting, clean "
@@ -301,15 +337,30 @@ def process():
     if not api_key:
         return jsonify(error="Google AI Studio API 키를 입력해주세요."), 400
 
-    image_file = request.files.get("image")
-    if not image_file or not image_file.filename:
-        return jsonify(error="이미지 파일을 선택해주세요."), 400
-    if image_file.mimetype not in ALLOWED_CONTENT_TYPES:
-        return jsonify(error="PNG, JPEG, WEBP 이미지만 지원합니다."), 400
+    # 앞서 생성된 결과 한 장을 그대로 이어받는 경우(data URL)와
+    # 새 사진을 업로드하는 경우를 모두 지원한다.
+    reference = request.form.get("reference") or ""
+    keep_scene = False
+    if reference.startswith("data:image/"):
+        try:
+            b64 = reference.split(",", 1)[1]
+            image_bytes = base64.b64decode(b64)
+        except (IndexError, ValueError, binascii.Error):
+            return jsonify(error="선택한 이미지를 읽지 못했습니다."), 400
+        keep_scene = True
+    else:
+        image_file = request.files.get("image")
+        if not image_file or not image_file.filename:
+            return jsonify(error="이미지 파일을 선택해주세요."), 400
+        if image_file.mimetype not in ALLOWED_CONTENT_TYPES:
+            return jsonify(error="PNG, JPEG, WEBP 이미지만 지원합니다."), 400
+        image_bytes = image_file.read()
 
     mode = request.form.get("mode", "quick")
     if mode not in ("quick", "poseset"):
         mode = "quick"
+    if keep_scene:
+        mode = "poseset"
 
     try:
         count = int(request.form.get("count", 3))
@@ -325,19 +376,30 @@ def process():
     if background not in BACKGROUNDS:
         background = "studio"
 
-    if mode == "poseset":
+    if keep_scene:
+        # 고른 컷의 배경·모델·의상을 그대로 두고 서 있는 포즈만 바꾼다.
+        count = max(POSESET_MIN, min(count, POSESET_MAX))
+        pose_list = STANDING_POSES
+        scene_block = KEEP_SCENE_RULE
+    elif mode == "poseset":
         # 배경 하나를 고정하고 엄선된 포즈만 바꿔가며 촬영한 것처럼 만든다.
         count = max(POSESET_MIN, min(count, POSESET_MAX))
         if background == "auto":
             background = "studio"
-        location_rule = LOCATION_RULE_FIXED
+        pose_list = POSES
+        scene_block = (
+            BACKGROUND_RULE_TEMPLATE.format(setting=BACKGROUNDS[background])
+            + " "
+            + LOCATION_RULE_FIXED
+        )
     else:
         count = max(1, min(count, QUICK_MAX))
-        location_rule = LOCATION_RULE_VARY
-
-    background_rule = BACKGROUND_RULE_TEMPLATE.format(
-        setting=BACKGROUNDS[background]
-    )
+        pose_list = POSES
+        scene_block = (
+            BACKGROUND_RULE_TEMPLATE.format(setting=BACKGROUNDS[background])
+            + " "
+            + LOCATION_RULE_VARY
+        )
 
     accessories = (request.form.get("accessories") or "").strip()
     accessory_rule = (
@@ -346,7 +408,7 @@ def process():
         else ""
     )
 
-    ref_image = Image.open(io.BytesIO(image_file.read()))
+    ref_image = Image.open(io.BytesIO(image_bytes))
 
     client = genai.Client(api_key=api_key)
 
@@ -354,13 +416,12 @@ def process():
 
     try:
         for i in range(count):
-            pose = POSES[i % len(POSES)]
+            pose = pose_list[i % len(pose_list)]
             prompt = PROMPT_TEMPLATE.format(
                 focus=product["focus"],
                 framing=product["framing"],
                 face_rule=FACE_RULE,
-                background_rule=background_rule,
-                location_rule=location_rule,
+                scene_block=scene_block,
                 pose_style=POSE_STYLE_RULE,
                 accessory_rule=accessory_rule,
                 pose=pose,
