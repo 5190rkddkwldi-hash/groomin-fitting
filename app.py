@@ -20,17 +20,35 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB
 
 ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
-MAX_COUNT = 4
+QUICK_MAX = 4  # 빠른 생성 모드 최대 장수
+POSESET_MIN, POSESET_MAX = 10, 12  # 포즈 모음 모드 장수 범위
 MODEL = "gemini-3.1-flash-image"
 
+# 쇼핑몰 착용컷의 정석 구도 12종. 앞의 4개는 어떤 상품에나 무난해서
+# 빠른 생성 모드에서 우선 사용된다.
 POSES = [
-    "standing relaxed and upright, weight on one leg, hands resting "
-    "naturally at the sides or lightly in pockets",
-    "standing at a slight three-quarter angle, one hand in a pocket, "
-    "shoulders relaxed",
-    "captured mid-step, walking calmly and unhurried",
-    "standing still and leaning lightly against a wall, column or railing "
-    "in the scene",
+    "standing straight toward the camera, weight settled on one leg, one "
+    "hand resting lightly in a pocket, shoulders relaxed",
+    "turned to a three-quarter angle, body slightly away from the camera, "
+    "both hands loose at the sides",
+    "captured mid-step, walking calmly and unhurried toward the camera",
+    "standing still while leaning lightly against a wall, column or "
+    "railing in the scene",
+    "standing square to the camera with both hands in pockets, elbows "
+    "relaxed outward",
+    "in full profile from the side, showing the silhouette and side line "
+    "of the garment",
+    "seen from behind, showing the back of the garment and its fit across "
+    "the shoulders and back",
+    "seated naturally on steps, a bench or a low ledge, posture relaxed",
+    "standing in a soft contrapposto — one knee slightly bent, hips "
+    "gently shifted, a natural unposed stance",
+    "standing with arms lightly crossed, upper body angled a few degrees "
+    "off centre",
+    "one hand lifting or adjusting the hem, cuff or collar of the garment, "
+    "drawing attention to its detail and texture",
+    "photographed from a slightly low angle so the body line looks long "
+    "and the garment's proportions read clearly",
 ]
 
 # 카테고리별 프레이밍 — 상품이 화면에서 주인공이 되도록 컷을 다르게 잡는다.
@@ -204,19 +222,35 @@ BACKGROUND_RULE_TEMPLATE = (
     "desirable and worth buying."
 )
 
+# 빠른 생성: 매 컷 장소가 달라져도 됨 / 포즈 모음: 한 장소에서 찍은 것처럼 고정
+LOCATION_RULE_VARY = (
+    "Use a new, different location from the reference photo."
+)
+LOCATION_RULE_FIXED = (
+    "All images in this set must look like they were shot at the SAME "
+    "single location in one continuous photo session — keep the "
+    "background, lighting and time of day consistent, changing only the "
+    "camera angle and the pose."
+)
+
+ACCESSORY_RULE_TEMPLATE = (
+    "Additionally style the look with: {accessories}. Add these naturally "
+    "and tastefully so they complement the outfit — but do NOT alter, "
+    "cover or replace the main product itself. "
+)
+
 PROMPT_TEMPLATE = (
     "Using the exact same person and the exact same {focus} shown in the "
     "reference photo, generate a new photorealistic image as if shot by a "
     "professional fashion e-commerce photographer on location. "
-    "{framing} {face_rule} {background_rule} Use a new, different "
-    "location from the reference photo, and set the pose to: {pose}. The "
-    "pose must look natural, relaxed and unforced — never stiff or "
-    "exaggerated. Keep the item's colour, fabric, texture, fit and "
-    "details exactly consistent and clearly recognizable with the "
-    "reference photo. Soft natural lighting, clean colour grading, "
-    "shallow depth of field, high-resolution editorial quality. "
-    "Before generating the image, briefly describe the new scene and pose "
-    "in one English sentence."
+    "{framing} {face_rule} {background_rule} {location_rule} Set the pose "
+    "to: {pose}. The pose must look natural, relaxed and unforced — never "
+    "stiff or exaggerated. {accessory_rule}Keep the item's colour, "
+    "fabric, texture, fit and details exactly consistent and clearly "
+    "recognizable with the reference photo. Soft natural lighting, clean "
+    "colour grading, shallow depth of field, high-resolution editorial "
+    "quality. Before generating the image, briefly describe the scene and "
+    "pose in one English sentence."
 )
 
 
@@ -224,7 +258,9 @@ PROMPT_TEMPLATE = (
 def index():
     return render_template(
         "index.html",
-        max_count=MAX_COUNT,
+        quick_max=QUICK_MAX,
+        poseset_min=POSESET_MIN,
+        poseset_max=POSESET_MAX,
         background_groups=BACKGROUND_GROUPS,
         products=[(key, val["label"]) for key, val in PRODUCTS.items()],
     )
@@ -242,11 +278,14 @@ def process():
     if image_file.mimetype not in ALLOWED_CONTENT_TYPES:
         return jsonify(error="PNG, JPEG, WEBP 이미지만 지원합니다."), 400
 
+    mode = request.form.get("mode", "quick")
+    if mode not in ("quick", "poseset"):
+        mode = "quick"
+
     try:
         count = int(request.form.get("count", 3))
     except ValueError:
         count = 3
-    count = max(1, min(count, MAX_COUNT))
 
     product_type = request.form.get("product_type", "top")
     if product_type not in PRODUCTS:
@@ -254,12 +293,29 @@ def process():
     product = PRODUCTS[product_type]
 
     background = request.form.get("background", "auto")
-    custom_background = (request.form.get("custom_background") or "").strip()
-    if custom_background:
-        setting = f"in a location described as: {custom_background[:300]}"
+    if background not in BACKGROUNDS:
+        background = "auto"
+
+    if mode == "poseset":
+        # 배경 하나를 고정하고 엄선된 포즈만 바꿔가며 촬영한 것처럼 만든다.
+        count = max(POSESET_MIN, min(count, POSESET_MAX))
+        if background == "auto":
+            background = "minimal_wall"
+        location_rule = LOCATION_RULE_FIXED
     else:
-        setting = BACKGROUNDS.get(background, BACKGROUNDS["auto"])
-    background_rule = BACKGROUND_RULE_TEMPLATE.format(setting=setting)
+        count = max(1, min(count, QUICK_MAX))
+        location_rule = LOCATION_RULE_VARY
+
+    background_rule = BACKGROUND_RULE_TEMPLATE.format(
+        setting=BACKGROUNDS[background]
+    )
+
+    accessories = (request.form.get("accessories") or "").strip()
+    accessory_rule = (
+        ACCESSORY_RULE_TEMPLATE.format(accessories=accessories[:200])
+        if accessories
+        else ""
+    )
 
     ref_image = Image.open(io.BytesIO(image_file.read()))
 
@@ -275,6 +331,8 @@ def process():
                 framing=product["framing"],
                 face_rule=FACE_RULE,
                 background_rule=background_rule,
+                location_rule=location_rule,
+                accessory_rule=accessory_rule,
                 pose=pose,
             )
             response = client.models.generate_content(

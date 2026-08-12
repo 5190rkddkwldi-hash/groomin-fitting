@@ -105,6 +105,10 @@
   .seg input:checked + label {
     background: var(--accent); border-color: var(--accent); color: #14140a;
   }
+  .seg-sub {
+    display: block; font-size: 0.72rem; font-weight: 500;
+    opacity: .7; margin-top: 2px;
+  }
 
   /* chips */
   .chips { display: flex; flex-wrap: wrap; gap: 7px; }
@@ -212,6 +216,17 @@
 
     <div class="card">
       <div class="field">
+        <label class="lbl">생성 모드</label>
+        <div class="seg">
+          <input type="radio" id="mode-quick" name="mode" value="quick" checked>
+          <label for="mode-quick">빠른 생성<br><span class="seg-sub">최대 {{ quick_max }}장 · 장소 다양</span></label>
+          <input type="radio" id="mode-poseset" name="mode" value="poseset">
+          <label for="mode-poseset">포즈 모음<br><span class="seg-sub">{{ poseset_min }}~{{ poseset_max }}장 · 배경 고정</span></label>
+        </div>
+        <p class="help" id="modeHelp">한 장씩 다른 장소에서 찍은 것처럼 만듭니다.</p>
+      </div>
+
+      <div class="field">
         <label class="lbl">상품 종류 <span style="color:var(--muted);font-weight:400">(상품이 잘 보이도록 컷이 달라집니다)</span></label>
         <div class="chips">
           {% for key, label in products %}
@@ -237,15 +252,16 @@
       </div>
 
       <div class="field">
-        <label class="lbl" for="customBg">배경 직접 입력 <span style="color:var(--muted);font-weight:400">(선택)</span></label>
-        <input type="text" id="customBg" name="custom_background"
-               placeholder="예: 이른 아침 잔잔한 호숫가, 안개가 살짝 낀">
-        <p class="help">입력하면 위에서 고른 배경 대신 이 설명이 사용됩니다.</p>
+        <label class="lbl" for="accessories">장신구 · 추가 스타일링 <span style="color:var(--muted);font-weight:400">(선택)</span></label>
+        <input type="text" id="accessories" name="accessories"
+               placeholder="예: 볼캡, 은목걸이, 크로스백, 흰 양말">
+        <p class="help">함께 매치할 소품을 적어주세요. 메인 상품은 그대로 유지됩니다.</p>
       </div>
 
       <div class="field">
         <label class="lbl" for="count">생성 개수 <span style="color:var(--muted);font-weight:400">(포즈별로 한 장씩)</span></label>
-        <input type="number" id="count" name="count" min="1" max="{{ max_count }}" value="3">
+        <input type="number" id="count" name="count" min="1" max="{{ quick_max }}" value="3">
+        <p class="help" id="countHelp">서로 다른 포즈로 최대 {{ quick_max }}장까지 만듭니다.</p>
       </div>
     </div>
 
@@ -289,6 +305,38 @@ drop.addEventListener("drop", (e) => {
   const file = e.dataTransfer.files[0];
   if (file) { fileInput.files = e.dataTransfer.files; showFile(file); }
 });
+
+// 모드에 따라 생성 개수 범위와 안내 문구를 전환
+const QUICK_MAX = {{ quick_max }};
+const POSESET_MIN = {{ poseset_min }};
+const POSESET_MAX = {{ poseset_max }};
+const countInput = document.getElementById("count");
+const countHelp = document.getElementById("countHelp");
+const modeHelp = document.getElementById("modeHelp");
+const autoChip = document.getElementById("bg-auto");
+
+function applyMode() {
+  const poseset = document.getElementById("mode-poseset").checked;
+  if (poseset) {
+    countInput.min = POSESET_MIN;
+    countInput.max = POSESET_MAX;
+    countInput.value = POSESET_MAX;
+    countHelp.textContent =
+      `엄선된 포즈 ${POSESET_MIN}~${POSESET_MAX}가지로 만듭니다. 장수가 많아 5분 이상 걸릴 수 있어요.`;
+    modeHelp.textContent =
+      "고른 배경 한 곳에서 포즈만 바꿔가며 촬영한 것처럼 만듭니다. ‘랜덤’을 고르면 미니멀 벽으로 고정됩니다.";
+  } else {
+    countInput.min = 1;
+    countInput.max = QUICK_MAX;
+    if (countInput.value > QUICK_MAX) countInput.value = 3;
+    countHelp.textContent = `서로 다른 포즈로 최대 ${QUICK_MAX}장까지 만듭니다.`;
+    modeHelp.textContent = "한 장씩 다른 장소에서 찍은 것처럼 만듭니다.";
+  }
+}
+
+document.querySelectorAll('input[name="mode"]').forEach(el =>
+  el.addEventListener("change", applyMode));
+applyMode();
 
 function setStatus(text, isError = false, spinning = false) {
   statusEl.className = isError ? "error" : "";
