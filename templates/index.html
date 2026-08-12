@@ -3,116 +3,333 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>모델 배경·포즈 변형기</title>
+<title>FITTING CUT — 피팅컷 생성기</title>
 <style>
-  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+
+  :root {
+    --bg: #0b0b0d;
+    --surface: #141418;
+    --surface-2: #1c1c22;
+    --border: #2a2a32;
+    --text: #f2f2f4;
+    --muted: #8b8b96;
+    --accent: #d4ff3f;
+    --accent-dim: #a8cc2f;
+    --danger: #ff5c5c;
+  }
+
   body {
-    font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
-    max-width: 720px;
-    margin: 40px auto;
-    padding: 0 16px;
-    line-height: 1.5;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Pretendard", -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
   }
-  h1 { font-size: 1.4rem; }
-  .hint { color: #888; font-size: 0.85rem; }
-  fieldset { border: 1px solid #ccc; border-radius: 8px; margin-bottom: 16px; padding: 16px; }
-  label { display: block; font-weight: 600; margin-bottom: 4px; }
-  input[type="file"], input[type="password"], input[type="number"], select {
-    width: 100%; box-sizing: border-box; padding: 8px; margin-bottom: 12px;
-    border: 1px solid #ccc; border-radius: 6px; font-size: 1rem;
+
+  .wrap { max-width: 860px; margin: 0 auto; padding: 56px 20px 80px; }
+
+  header { margin-bottom: 40px; }
+  .eyebrow {
+    font-size: 0.72rem; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; margin-bottom: 10px;
   }
-  button {
-    padding: 10px 20px; font-size: 1rem; border: none; border-radius: 6px;
-    background: #2563eb; color: white; cursor: pointer;
+  h1 {
+    font-size: clamp(1.8rem, 5vw, 2.6rem); font-weight: 800;
+    letter-spacing: -0.03em; margin: 0 0 12px; line-height: 1.15;
   }
-  button:disabled { background: #93b4f0; cursor: not-allowed; }
-  #status { margin: 16px 0; min-height: 1.5em; }
-  #status.error { color: #dc2626; }
-  #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-  #results figure { margin: 0; }
-  #results img { width: 100%; border-radius: 8px; display: block; }
-  #results figcaption { text-align: center; margin-top: 6px; font-size: 0.85rem; color: #666; }
-  #results a { display: block; text-align: center; margin-top: 4px; font-size: 0.85rem; }
+  .sub { color: var(--muted); font-size: 0.95rem; margin: 0; max-width: 52ch; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 24px;
+    margin-bottom: 18px;
+  }
+
+  .field { margin-bottom: 22px; }
+  .field:last-child { margin-bottom: 0; }
+
+  label.lbl {
+    display: block; font-size: 0.8rem; font-weight: 700;
+    letter-spacing: 0.02em; margin-bottom: 8px; color: var(--text);
+  }
+  .help { font-size: 0.78rem; color: var(--muted); margin: 6px 0 0; }
+
+  input[type="password"], input[type="text"], input[type="number"], select {
+    width: 100%; padding: 12px 14px;
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 11px;
+    font-size: 0.95rem; font-family: inherit;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus, select:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(212,255,63,.13);
+  }
+  select {
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238b8b96' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center;
+    padding-right: 38px; cursor: pointer;
+  }
+
+  /* file drop */
+  .drop {
+    position: relative; border: 1.5px dashed var(--border);
+    border-radius: 14px; padding: 26px 18px; text-align: center;
+    background: var(--surface-2); cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.hover { border-color: var(--accent); background: #20201a; }
+  .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .drop-icon { font-size: 1.6rem; display: block; margin-bottom: 6px; }
+  .drop-text { font-size: 0.88rem; color: var(--muted); }
+  .drop.has-file { border-style: solid; border-color: var(--accent-dim); }
+  .drop.has-file .drop-text { color: var(--accent); font-weight: 600; }
+  #preview {
+    max-height: 150px; border-radius: 10px; margin-top: 12px; display: none;
+  }
+
+  /* segmented */
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label {
+    display: block; text-align: center; padding: 11px 8px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 11px; font-size: 0.88rem; font-weight: 600;
+    cursor: pointer; transition: all .15s; user-select: none;
+  }
+  .seg input:checked + label {
+    background: var(--accent); border-color: var(--accent); color: #14140a;
+  }
+
+  /* chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chips input { position: absolute; opacity: 0; pointer-events: none; }
+  .chips label {
+    padding: 8px 14px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 999px;
+    font-size: 0.83rem; cursor: pointer; transition: all .15s;
+    user-select: none; white-space: nowrap;
+  }
+  .chips label:hover { border-color: #3d3d47; }
+  .chips input:checked + label {
+    background: var(--accent); border-color: var(--accent);
+    color: #14140a; font-weight: 700;
+  }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+
+  button.go {
+    width: 100%; padding: 16px; margin-top: 4px;
+    background: var(--accent); color: #14140a;
+    border: none; border-radius: 14px;
+    font-size: 1rem; font-weight: 800; font-family: inherit;
+    letter-spacing: -0.01em; cursor: pointer;
+    transition: transform .12s, background .15s;
+  }
+  button.go:hover:not(:disabled) { background: #e2ff60; transform: translateY(-1px); }
+  button.go:active:not(:disabled) { transform: translateY(0); }
+  button.go:disabled { background: #3a3f28; color: #7c7f68; cursor: not-allowed; }
+
+  #status {
+    margin: 20px 0; font-size: 0.9rem; color: var(--muted);
+    display: flex; align-items: center; gap: 10px; min-height: 24px;
+  }
+  #status.error { color: var(--danger); }
+  .spinner {
+    width: 15px; height: 15px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin .7s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #results {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 16px;
+  }
+  #results figure {
+    margin: 0; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden;
+  }
+  #results img { width: 100%; display: block; }
+  #results figcaption {
+    padding: 11px 13px 4px; font-size: 0.76rem;
+    color: var(--muted); line-height: 1.45;
+  }
+  #results .dl {
+    display: block; margin: 8px 13px 13px; padding: 9px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 9px; text-align: center; font-size: 0.8rem;
+    font-weight: 600; color: var(--text); text-decoration: none;
+    transition: all .15s;
+  }
+  #results .dl:hover { background: var(--accent); border-color: var(--accent); color: #14140a; }
 </style>
 </head>
 <body>
-  <h1>쇼핑몰 피팅컷 생성기</h1>
-  <p class="hint">
-    모델 착용 참고 사진을 올리면, 얼굴 없이(목까지만) 상품 위주로 프레이밍된
-    쇼핑몰 피팅컷 스타일 사진을 트렌디한 야외 배경과 다양한 포즈로 여러 장 생성합니다.
-  </p>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">AI Fitting Cut Generator</div>
+    <h1>쇼핑몰 피팅컷<br>자동 생성</h1>
+    <p class="sub">
+      모델 착용 사진 한 장이면 충분합니다. 얼굴 없이 상품 위주로,
+      트렌디한 야외 배경과 자연스러운 포즈의 피팅컷을 여러 장 만들어드려요.
+    </p>
+  </header>
 
   <form id="form">
-    <fieldset>
-      <label for="apiKey">Google AI Studio API 키</label>
-      <input type="password" id="apiKey" name="api_key" placeholder="AIza..." required autocomplete="off">
-      <p class="hint">이 서버는 입력하신 키를 저장하지 않습니다. 요청 처리 후 즉시 폐기됩니다. 키는 aistudio.google.com 에서 발급받을 수 있습니다.</p>
 
-      <label for="image">참고 사진</label>
-      <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp" required>
+    <div class="card">
+      <div class="field">
+        <label class="lbl" for="apiKey">Google AI Studio API 키</label>
+        <input type="password" id="apiKey" name="api_key" placeholder="AIza..." required autocomplete="off">
+        <p class="help">키는 저장되지 않고 요청 처리 후 바로 폐기됩니다. aistudio.google.com 에서 무료 발급 가능해요.</p>
+      </div>
 
-      <label for="productType">상품 종류</label>
-      <select id="productType" name="product_type">
-        <option value="top">상의 (상반신 위주로 프레이밍)</option>
-        <option value="bottom">하의/바지 (전신, 하반신 위주로 프레이밍)</option>
-      </select>
+      <div class="field">
+        <label class="lbl">참고 사진</label>
+        <div class="drop" id="drop">
+          <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp" required>
+          <span class="drop-icon">📷</span>
+          <span class="drop-text" id="dropText">클릭하거나 사진을 여기로 끌어다 놓으세요</span>
+        </div>
+        <img id="preview" alt="미리보기">
+      </div>
+    </div>
 
-      <label for="count">생성할 사진 개수 (포즈별로 하나씩)</label>
-      <input type="number" id="count" name="count" min="1" max="{{ max_count }}" value="3">
-    </fieldset>
+    <div class="card">
+      <div class="field">
+        <label class="lbl">상품 종류</label>
+        <div class="seg">
+          <input type="radio" id="pt-top" name="product_type" value="top" checked>
+          <label for="pt-top">상의 — 상반신 위주</label>
+          <input type="radio" id="pt-bottom" name="product_type" value="bottom">
+          <label for="pt-bottom">하의 — 전신 위주</label>
+        </div>
+      </div>
 
-    <button type="submit" id="submitBtn">사진 생성하기</button>
+      <div class="field">
+        <label class="lbl">배경 분위기</label>
+        <div class="chips">
+          {% for key, label in backgrounds %}
+          <input type="radio" id="bg-{{ key }}" name="background" value="{{ key }}" {% if loop.first %}checked{% endif %}>
+          <label for="bg-{{ key }}">{{ label }}</label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="lbl" for="customBg">배경 직접 입력 <span style="color:var(--muted);font-weight:400">(선택)</span></label>
+        <input type="text" id="customBg" name="custom_background"
+               placeholder="예: 비 온 뒤 젖은 아스팔트 위, 흐린 날 오후">
+        <p class="help">입력하면 위에서 고른 배경 대신 이 설명이 사용됩니다.</p>
+      </div>
+
+      <div class="field">
+        <label class="lbl" for="count">생성 개수 <span style="color:var(--muted);font-weight:400">(포즈별로 한 장씩)</span></label>
+        <input type="number" id="count" name="count" min="1" max="{{ max_count }}" value="3">
+      </div>
+    </div>
+
+    <button type="submit" class="go" id="submitBtn">피팅컷 생성하기</button>
   </form>
 
   <div id="status"></div>
   <div id="results"></div>
+
+</div>
 
 <script>
 const form = document.getElementById("form");
 const statusEl = document.getElementById("status");
 const resultsEl = document.getElementById("results");
 const submitBtn = document.getElementById("submitBtn");
+const drop = document.getElementById("drop");
+const fileInput = document.getElementById("image");
+const dropText = document.getElementById("dropText");
+const preview = document.getElementById("preview");
+
+function showFile(file) {
+  if (!file) return;
+  drop.classList.add("has-file");
+  dropText.textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    preview.src = e.target.result;
+    preview.style.display = "block";
+  };
+  reader.readAsDataURL(file);
+}
+
+fileInput.addEventListener("change", () => showFile(fileInput.files[0]));
+
+["dragenter", "dragover"].forEach(ev =>
+  drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("hover"); }));
+["dragleave", "drop"].forEach(ev =>
+  drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("hover"); }));
+drop.addEventListener("drop", (e) => {
+  const file = e.dataTransfer.files[0];
+  if (file) { fileInput.files = e.dataTransfer.files; showFile(file); }
+});
+
+function setStatus(text, isError = false, spinning = false) {
+  statusEl.className = isError ? "error" : "";
+  statusEl.innerHTML = "";
+  if (spinning) {
+    const s = document.createElement("div");
+    s.className = "spinner";
+    statusEl.appendChild(s);
+  }
+  statusEl.appendChild(document.createTextNode(text));
+}
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
-  statusEl.className = "";
-  statusEl.textContent = "처리 중입니다... (개수에 따라 최대 2분 정도 걸릴 수 있어요)";
   resultsEl.innerHTML = "";
   submitBtn.disabled = true;
+  submitBtn.textContent = "생성 중...";
+  setStatus("이미지를 만들고 있어요. 개수에 따라 최대 2분 정도 걸릴 수 있습니다.", false, true);
 
   try {
-    const resp = await fetch("/api/process", {
-      method: "POST",
-      body: new FormData(form),
-    });
+    const resp = await fetch("/api/process", { method: "POST", body: new FormData(form) });
     const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "알 수 없는 오류가 발생했습니다.");
 
-    if (!resp.ok) {
-      throw new Error(data.error || "알 수 없는 오류가 발생했습니다.");
-    }
-
-    statusEl.textContent = `완료되었습니다. (${data.results.length}개 생성)`;
+    setStatus(`완료되었습니다 — ${data.results.length}장 생성`);
 
     data.results.forEach((item, i) => {
       const fig = document.createElement("figure");
       const img = document.createElement("img");
       img.src = item.image;
-      const caption = document.createElement("figcaption");
-      caption.textContent = item.caption;
-      const link = document.createElement("a");
-      link.href = item.image;
-      link.download = `variant_${i + 1}.png`;
-      link.textContent = "다운로드";
+      img.alt = `생성된 피팅컷 ${i + 1}`;
       fig.appendChild(img);
-      fig.appendChild(caption);
+
+      if (item.caption) {
+        const cap = document.createElement("figcaption");
+        cap.textContent = item.caption;
+        fig.appendChild(cap);
+      }
+
+      const link = document.createElement("a");
+      link.className = "dl";
+      link.href = item.image;
+      link.download = `fitting_cut_${i + 1}.png`;
+      link.textContent = "↓ 다운로드";
       fig.appendChild(link);
+
       resultsEl.appendChild(fig);
     });
   } catch (err) {
-    statusEl.className = "error";
-    statusEl.textContent = "오류: " + err.message;
+    setStatus("오류: " + err.message, true);
   } finally {
     submitBtn.disabled = false;
+    submitBtn.textContent = "피팅컷 생성하기";
   }
 });
 </script>

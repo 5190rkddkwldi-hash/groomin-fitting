@@ -50,13 +50,67 @@ FACE_RULE = (
     "model's face is never shown."
 )
 
-BACKGROUND_RULE = (
+BACKGROUNDS = {
+    "auto": (
+        "a trendy urban setting — pick something different each time, such "
+        "as a cafe storefront, a textured concrete wall, retro signage, a "
+        "sidewalk with street furniture, or a narrow alleyway"
+    ),
+    "cafe": (
+        "in front of a stylish cafe storefront, with glass windows, wooden "
+        "or metal frames, outdoor chairs and a sandwich board sign"
+    ),
+    "concrete": (
+        "against a raw textured concrete or plaster wall with subtle "
+        "stains, cracks and urban texture"
+    ),
+    "alley": (
+        "in a narrow urban back alley with pipes, air-conditioning units, "
+        "small signage and worn walls"
+    ),
+    "retro": (
+        "on a retro shopping street with vintage Korean signage, old shop "
+        "fronts and hand-painted lettering"
+    ),
+    "brick": (
+        "against a red or beige brick wall with visible mortar lines and "
+        "warm texture"
+    ),
+    "park": (
+        "on a tree-lined path or in a park, with greenery, dappled "
+        "sunlight and a paved walkway"
+    ),
+    "subway": (
+        "near a subway entrance or station exit, with tiled walls, metal "
+        "railings and urban signage"
+    ),
+    "minimal": (
+        "in a minimal modern interior with clean white or beige walls, "
+        "soft natural window light and simple furniture"
+    ),
+    "night": (
+        "on a city street at night, lit by warm shop signs, neon glow and "
+        "street lamps"
+    ),
+}
+
+BACKGROUND_LABELS = [
+    ("auto", "랜덤 (매번 다르게)"),
+    ("cafe", "카페 앞"),
+    ("concrete", "콘크리트 벽"),
+    ("alley", "좁은 골목길"),
+    ("retro", "레트로 간판 거리"),
+    ("brick", "벽돌 벽"),
+    ("park", "공원 / 나무길"),
+    ("subway", "지하철 입구"),
+    ("minimal", "미니멀 실내"),
+    ("night", "밤거리 네온"),
+]
+
+BACKGROUND_RULE_TEMPLATE = (
     "Background style: candid, realistic Korean street-fashion 'fitting "
-    "cut' photography shot outdoors in a trendy urban setting — for "
-    "example a cafe storefront, a textured concrete or brick wall, retro "
-    "signage, a sidewalk with street furniture, or a narrow alleyway. "
-    "Natural daylight, a slightly candid snapshot feel, NOT a plain "
-    "studio backdrop."
+    "cut' photography, shot {setting}. Natural lighting, a slightly "
+    "candid snapshot feel, NOT a plain studio backdrop."
 )
 
 PROMPT_TEMPLATE = (
@@ -75,7 +129,9 @@ PROMPT_TEMPLATE = (
 
 @app.route("/")
 def index():
-    return render_template("index.html", max_count=MAX_COUNT)
+    return render_template(
+        "index.html", max_count=MAX_COUNT, backgrounds=BACKGROUND_LABELS
+    )
 
 
 @app.route("/api/process", methods=["POST"])
@@ -101,6 +157,14 @@ def process():
         product_type = "top"
     focus = "top garment" if product_type == "top" else "pants/bottom garment"
 
+    background = request.form.get("background", "auto")
+    custom_background = (request.form.get("custom_background") or "").strip()
+    if custom_background:
+        setting = f"in a location described as: {custom_background[:300]}"
+    else:
+        setting = BACKGROUNDS.get(background, BACKGROUNDS["auto"])
+    background_rule = BACKGROUND_RULE_TEMPLATE.format(setting=setting)
+
     ref_image = Image.open(io.BytesIO(image_file.read()))
 
     client = genai.Client(api_key=api_key)
@@ -114,7 +178,7 @@ def process():
                 focus=focus,
                 framing=FRAMING[product_type],
                 face_rule=FACE_RULE,
-                background_rule=BACKGROUND_RULE,
+                background_rule=background_rule,
                 pose=pose,
             )
             response = client.models.generate_content(
