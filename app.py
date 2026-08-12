@@ -18,7 +18,7 @@ from google.genai import types
 from google.genai import errors as genai_errors
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB
+app.config["MAX_CONTENT_LENGTH"] = 24 * 1024 * 1024  # 참고컷 + 누끼컷 2장
 
 ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
 QUICK_MAX = 4  # 빠른 생성 모드 최대 장수
@@ -54,13 +54,21 @@ POSES = [
 
 # 카테고리별 프레이밍 — 상품이 화면에서 주인공이 되도록 컷을 다르게 잡는다.
 PRODUCTS = {
+    # 상의는 하의보다 훨씬 타이트하게, 가슴 높이 카메라, 사선 벽면 구도.
+    # (4910 남성 상의 인기순 40컷 분석 결과 반영)
     "top": {
         "label": "상의",
         "focus": "top garment",
         "framing": (
-            "Frame from just below the chin down to the upper thighs so "
-            "the top garment fills most of the frame; its shoulder line, "
-            "sleeve length and drape must be clearly readable."
+            "Frame tightly on the upper body — from just below the chin "
+            "down to roughly mid-thigh — with the camera at about chest "
+            "height. The top garment must fill the majority of the frame "
+            "so its shoulder line, sleeve length, chest print and drape "
+            "read clearly. Compose against a wall or architectural line "
+            "that runs DIAGONALLY across the frame rather than flat-on, "
+            "and keep the floor almost entirely out of shot. Give the "
+            "hands something natural to do — resting on a bag strap, "
+            "holding a phone or a folded jacket, or tucked into a pocket."
         ),
     },
     "bottom": {
@@ -152,13 +160,27 @@ STANDING_POSES = [
     "camera, showing the side line of the outfit",
 ]
 
-# 모델 표준 — 사용자가 제시한 기준 컷(근육질 남성 모델)에 맞춰 매번 동일하게.
+# 모델 표준 — 180cm / 79kg, 옷 입었을 때 체격이 살아 보이도록.
 MODEL_RULE = (
     "The model must be the same standard model every time: a young Korean "
-    "man with an athletic, visibly muscular build — broad shoulders, a "
-    "defined chest and clearly developed arms, a trim waist, tall "
-    "well-proportioned legs, and a warm light-tan skin tone. Keep this "
-    "exact body type, build and skin tone consistent across every image. "
+    "man, about 180cm tall and 79kg, with an athletic, visibly muscular "
+    "build — broad shoulders, a full chest, clearly developed arms and "
+    "back, a trim waist, long well-proportioned legs, and a warm "
+    "light-tan skin tone. He should read as solid and physically "
+    "substantial through the clothes: the fabric sits on real shoulders "
+    "and a real chest, filling out the garment rather than hanging flat "
+    "on a slim frame. Keep this exact body type, build and skin tone "
+    "consistent across every image. "
+)
+
+# 상의 컷의 배경·분위기. 하의 컷보다 벽면/질감/무드 비중이 크다.
+TOP_MOOD_RULE = (
+    "Because this is a top-garment shot, lean the setting toward an "
+    "atmospheric, textured vertical backdrop — a weathered concrete or "
+    "plaster wall, exposed brick, a doorway or stairwell edge, a column, "
+    "or a quiet interior corner. Let a wall edge or architectural line "
+    "cut diagonally through the frame to give depth, and keep the mood "
+    "softly warm and a little moody rather than bright and flat. "
 )
 
 # 판매 상품은 절대 건드리지 않고 '나머지 코디'만 바꾼다.
@@ -369,6 +391,16 @@ KEEP_SCENE_RULE = (
     "model's body pose."
 )
 
+# 누끼(상품 단독) 컷을 함께 올린 경우, 상품 디테일의 기준으로 삼는다.
+DETAIL_RULE = (
+    "TWO images are supplied. The FIRST is the worn fitting cut — use it "
+    "for how the garment sits on the body. The SECOND is a clean cut-out "
+    "product shot of the exact item being sold — treat it as the "
+    "authoritative reference for the item's true colour, fabric texture, "
+    "print, graphics, trims, stitching and construction. Where the two "
+    "disagree, follow the cut-out shot for the item's appearance. "
+)
+
 ACCESSORY_RULE_TEMPLATE = (
     "Additionally style the look with: {accessories}. Add these naturally "
     "and tastefully so they complement the outfit — but do NOT alter, "
@@ -377,11 +409,11 @@ ACCESSORY_RULE_TEMPLATE = (
 
 # 새 장소에서 찍은 것처럼 만드는 경우
 PROMPT_NEW_SCENE = (
-    "Using the exact same {focus} shown in the reference photo, generate "
-    "a new photorealistic image as if shot by a professional fashion "
-    "e-commerce photographer on location. "
-    "{model_rule}{framing} {face_rule} {scene_block} Set the pose "
-    "to: {pose}. {pose_style}{styling_rule}{accessory_rule}Keep the "
+    "{detail_rule}Using the exact same {focus} shown in the reference "
+    "photo, generate a new photorealistic image as if shot by a "
+    "professional fashion e-commerce photographer on location. "
+    "{model_rule}{framing} {face_rule} {scene_block} {mood_rule}Set the "
+    "pose to: {pose}. {pose_style}{styling_rule}{accessory_rule}Keep the "
     "item's colour, fabric, texture, fit and details exactly consistent "
     "and clearly recognizable with the reference photo. "
     "Keep the whole frame in natural sharp focus — the background must be "
@@ -394,7 +426,8 @@ PROMPT_NEW_SCENE = (
 # 보낸 사진을 그대로 두고 포즈만 바꾸는 경우.
 # 배경을 새로 만들게 유도하는 표현(new image / colour grading 등)을 일절 넣지 않는다.
 PROMPT_SAME_SCENE = (
-    "Edit the supplied photo so that only the model's pose changes. "
+    "{detail_rule}Edit the FIRST supplied photo so that only the model's "
+    "pose changes. "
     "{scene_block} The new pose is: {pose}. {pose_style}"
     "{framing} {face_rule} {accessory_rule}"
     "Re-render the {focus} so it hangs and folds correctly for the new "
@@ -443,6 +476,14 @@ def process():
             return jsonify(error="PNG, JPEG, WEBP 이미지만 지원합니다."), 400
         image_bytes = image_file.read()
 
+    # 상세페이지용 누끼(상품 단독) 컷 — 선택 사항, 상품 디테일의 기준이 된다.
+    detail_bytes = None
+    detail_file = request.files.get("detail_image")
+    if detail_file and detail_file.filename:
+        if detail_file.mimetype not in ALLOWED_CONTENT_TYPES:
+            return jsonify(error="누끼컷도 PNG, JPEG, WEBP만 지원합니다."), 400
+        detail_bytes = detail_file.read()
+
     mode = request.form.get("mode", "quick")
     if mode not in ("quick", "poseset"):
         mode = "quick"
@@ -489,6 +530,10 @@ def process():
             else ""
         )
         extra["model_rule"] = MODEL_RULE
+        # 상의는 사선 벽면·질감 위주의 무드를 한 겹 더 얹는다.
+        extra["mood_rule"] = TOP_MOOD_RULE if product_type == "top" else ""
+
+    extra["detail_rule"] = DETAIL_RULE if detail_bytes else ""
 
     accessories = (request.form.get("accessories") or "").strip()
     accessory_rule = (
@@ -497,7 +542,9 @@ def process():
         else ""
     )
 
-    ref_image = Image.open(io.BytesIO(image_bytes))
+    contents_images = [Image.open(io.BytesIO(image_bytes))]
+    if detail_bytes:
+        contents_images.append(Image.open(io.BytesIO(detail_bytes)))
 
     client = genai.Client(api_key=api_key)
 
@@ -518,7 +565,7 @@ def process():
             )
             response = client.models.generate_content(
                 model=MODEL,
-                contents=[prompt, ref_image],
+                contents=[prompt, *contents_images],
                 config=types.GenerateContentConfig(
                     response_modalities=[types.Modality.TEXT, types.Modality.IMAGE],
                 ),

@@ -89,7 +89,7 @@
   .drop-text { font-size: 0.88rem; color: var(--muted); }
   .drop.has-file { border-style: solid; border-color: var(--accent-dim); }
   .drop.has-file .drop-text { color: var(--accent); font-weight: 600; }
-  #preview {
+  #preview, #preview2 {
     max-height: 150px; border-radius: 10px; margin-top: 12px; display: none;
   }
 
@@ -214,13 +214,23 @@
       </div>
 
       <div class="field">
-        <label class="lbl">참고 사진</label>
+        <label class="lbl">① 메인 피팅컷 <span style="color:var(--muted);font-weight:400">(필수)</span></label>
         <div class="drop" id="drop">
           <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp" required>
           <span class="drop-icon">📷</span>
           <span class="drop-text" id="dropText">클릭하거나 사진을 여기로 끌어다 놓으세요</span>
         </div>
         <img id="preview" alt="미리보기">
+      </div>
+
+      <div class="field">
+        <label class="lbl">② 상품 디테일 · 누끼컷 <span style="color:var(--muted);font-weight:400">(선택)</span></label>
+        <div class="drop" id="drop2">
+          <input type="file" id="detailImage" name="detail_image" accept="image/png,image/jpeg,image/webp">
+          <span class="drop-icon">🧷</span>
+          <span class="drop-text" id="dropText2">상품만 있는 누끼컷을 올리면 색·프린트·디테일이 더 정확해집니다</span>
+        </div>
+        <img id="preview2" alt="누끼컷 미리보기">
       </div>
     </div>
 
@@ -303,28 +313,40 @@ const fileInput = document.getElementById("image");
 const dropText = document.getElementById("dropText");
 const preview = document.getElementById("preview");
 
-function showFile(file) {
-  if (!file) return;
-  drop.classList.add("has-file");
-  dropText.textContent = file.name;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    preview.src = e.target.result;
-    preview.style.display = "block";
-  };
-  reader.readAsDataURL(file);
+// 업로드 칸 하나를 미리보기·드래그앤드롭까지 묶어서 초기화
+function wireDrop(dropEl, inputEl, textEl, previewEl, defaultText) {
+  function show(file) {
+    if (!file) return;
+    dropEl.classList.add("has-file");
+    textEl.textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      previewEl.src = e.target.result;
+      previewEl.style.display = "block";
+    };
+    reader.readAsDataURL(file);
+  }
+  inputEl.addEventListener("change", () => show(inputEl.files[0]));
+  ["dragenter", "dragover"].forEach(ev =>
+    dropEl.addEventListener(ev, (e) => {
+      e.preventDefault(); dropEl.classList.add("hover");
+    }));
+  ["dragleave", "drop"].forEach(ev =>
+    dropEl.addEventListener(ev, (e) => {
+      e.preventDefault(); dropEl.classList.remove("hover");
+    }));
+  dropEl.addEventListener("drop", (e) => {
+    const file = e.dataTransfer.files[0];
+    if (file) { inputEl.files = e.dataTransfer.files; show(file); }
+  });
 }
 
-fileInput.addEventListener("change", () => showFile(fileInput.files[0]));
-
-["dragenter", "dragover"].forEach(ev =>
-  drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("hover"); }));
-["dragleave", "drop"].forEach(ev =>
-  drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("hover"); }));
-drop.addEventListener("drop", (e) => {
-  const file = e.dataTransfer.files[0];
-  if (file) { fileInput.files = e.dataTransfer.files; showFile(file); }
-});
+wireDrop(drop, fileInput, dropText, preview);
+wireDrop(
+  document.getElementById("drop2"),
+  document.getElementById("detailImage"),
+  document.getElementById("dropText2"),
+  document.getElementById("preview2"));
 
 // 모드에 따라 생성 개수 범위와 안내 문구를 전환
 const QUICK_MAX = {{ quick_max }};
@@ -441,6 +463,8 @@ async function makePoseSet(dataUrl, btn) {
   fd.append("product_type",
     document.querySelector('input[name="product_type"]:checked').value);
   fd.append("accessories", document.getElementById("accessories").value);
+  const detail = document.getElementById("detailImage").files[0];
+  if (detail) fd.append("detail_image", detail);
 
   try {
     const resp = await fetch("/api/process", { method: "POST", body: fd });
