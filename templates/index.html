@@ -121,6 +121,13 @@
     color: #14140a; font-weight: 700;
   }
 
+  .group { margin-bottom: 12px; }
+  .group:last-child { margin-bottom: 0; }
+  .group-name {
+    font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); font-weight: 700; margin-bottom: 7px;
+  }
+
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
 
@@ -179,7 +186,7 @@
     <h1>쇼핑몰 피팅컷<br>자동 생성</h1>
     <p class="sub">
       모델 착용 사진 한 장이면 충분합니다. 얼굴 없이 상품 위주로,
-      트렌디한 야외 배경과 자연스러운 포즈의 피팅컷을 여러 장 만들어드려요.
+      심플하지만 고급스러운 장소에서 찍은 듯한 피팅컷을 여러 장 만들어드려요.
     </p>
   </header>
 
@@ -205,29 +212,34 @@
 
     <div class="card">
       <div class="field">
-        <label class="lbl">상품 종류</label>
-        <div class="seg">
-          <input type="radio" id="pt-top" name="product_type" value="top" checked>
-          <label for="pt-top">상의 — 상반신 위주</label>
-          <input type="radio" id="pt-bottom" name="product_type" value="bottom">
-          <label for="pt-bottom">하의 — 전신 위주</label>
-        </div>
-      </div>
-
-      <div class="field">
-        <label class="lbl">배경 분위기</label>
+        <label class="lbl">상품 종류 <span style="color:var(--muted);font-weight:400">(상품이 잘 보이도록 컷이 달라집니다)</span></label>
         <div class="chips">
-          {% for key, label in backgrounds %}
-          <input type="radio" id="bg-{{ key }}" name="background" value="{{ key }}" {% if loop.first %}checked{% endif %}>
-          <label for="bg-{{ key }}">{{ label }}</label>
+          {% for key, label in products %}
+          <input type="radio" id="pt-{{ key }}" name="product_type" value="{{ key }}" {% if loop.first %}checked{% endif %}>
+          <label for="pt-{{ key }}">{{ label }}</label>
           {% endfor %}
         </div>
       </div>
 
       <div class="field">
+        <label class="lbl">배경 분위기</label>
+        {% for group, items in background_groups %}
+        <div class="group">
+          <div class="group-name">{{ group }}</div>
+          <div class="chips">
+            {% for key, label in items %}
+            <input type="radio" id="bg-{{ key }}" name="background" value="{{ key }}" {% if key == 'auto' %}checked{% endif %}>
+            <label for="bg-{{ key }}">{{ label }}</label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="field">
         <label class="lbl" for="customBg">배경 직접 입력 <span style="color:var(--muted);font-weight:400">(선택)</span></label>
         <input type="text" id="customBg" name="custom_background"
-               placeholder="예: 비 온 뒤 젖은 아스팔트 위, 흐린 날 오후">
+               placeholder="예: 이른 아침 잔잔한 호숫가, 안개가 살짝 낀">
         <p class="help">입력하면 위에서 고른 배경 대신 이 설명이 사용됩니다.</p>
       </div>
 
