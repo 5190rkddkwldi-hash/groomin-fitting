@@ -22,7 +22,7 @@ app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB
 
 ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
 QUICK_MAX = 4  # 빠른 생성 모드 최대 장수
-POSESET_MIN, POSESET_MAX = 10, 12  # 포즈 모음 모드 장수 범위
+POSESET_MAX = 12  # 포즈 모음 모드 최대 장수 (최소 1)
 MODEL = "gemini-3.1-flash-image"
 
 # 쇼핑몰 착용컷의 정석 구도 12종. 앞의 4개는 어떤 상품에나 무난해서
@@ -282,21 +282,26 @@ BACKGROUND_RULE_TEMPLATE = (
 LOCATION_RULE_VARY = (
     "Use a new, different location from the reference photo."
 )
-LOCATION_RULE_FIXED = (
-    "All images in this set must look like they were shot at the SAME "
-    "single location in one continuous photo session — keep the "
-    "background, lighting and time of day consistent, changing only the "
-    "camera angle and the pose."
-)
-# 고른 컷을 그대로 이어받아 포즈만 바꿀 때. 배경 프리셋 대신 이 규칙을 쓴다.
+# 보낸 사진을 그대로 쓰고 포즈만 바꿀 때. 배경 프리셋은 일절 개입하지 않는다.
 KEEP_SCENE_RULE = (
-    "CRITICAL — this must look like another frame from the very same "
-    "photo session, taken seconds later: reproduce the EXACT same "
-    "location, background, props, wall, floor, lighting, time of day, "
-    "colour grading, camera angle, camera height, distance and crop as "
-    "the reference photo. Keep the same model with the same body, skin "
-    "tone and hair, and the exact same outfit, shoes and accessories, "
-    "unchanged in every detail. Change ONLY the body pose."
+    "CRITICAL INSTRUCTION — treat the supplied photo as the finished set, "
+    "not as loose inspiration. This output must look like another frame "
+    "from that very same photo session, taken a few seconds later with "
+    "the camera untouched on its tripod. "
+    "Do NOT invent, replace or restyle the background. Reproduce the "
+    "IDENTICAL location, wall, floor, doorway, window and every existing "
+    "object exactly where it already sits in the supplied photo — same "
+    "position, same size, same angle. Do not add any new object, do not "
+    "remove any object, and do not move, rotate or rescale anything in "
+    "the scene. "
+    "Keep the lighting, shadow direction, time of day, white balance and "
+    "colour grading identical. Keep the camera angle, camera height, "
+    "focal length, distance and crop identical. "
+    "Keep the same model — same body, build, skin tone, hair and hands — "
+    "wearing the exact same outfit, shoes and accessories, unchanged in "
+    "every detail down to wrinkles, seams and logos. "
+    "The ONLY thing that may differ from the supplied photo is the "
+    "model's body pose."
 )
 
 ACCESSORY_RULE_TEMPLATE = (
@@ -305,7 +310,8 @@ ACCESSORY_RULE_TEMPLATE = (
     "cover or replace the main product itself. "
 )
 
-PROMPT_TEMPLATE = (
+# 새 장소에서 찍은 것처럼 만드는 경우
+PROMPT_NEW_SCENE = (
     "Using the exact same person and the exact same {focus} shown in the "
     "reference photo, generate a new photorealistic image as if shot by a "
     "professional fashion e-commerce photographer on location. "
@@ -318,13 +324,26 @@ PROMPT_TEMPLATE = (
     "pose in one English sentence."
 )
 
+# 보낸 사진을 그대로 두고 포즈만 바꾸는 경우.
+# 배경을 새로 만들게 유도하는 표현(new image / colour grading 등)을 일절 넣지 않는다.
+PROMPT_SAME_SCENE = (
+    "Edit the supplied photo so that only the model's pose changes. "
+    "{scene_block} The new pose is: {pose}. {pose_style}"
+    "{framing} {face_rule} {accessory_rule}"
+    "Re-render the {focus} so it hangs and folds correctly for the new "
+    "pose, while keeping its colour, fabric, texture, fit, seams and "
+    "print exactly as in the supplied photo. Photorealistic, matching "
+    "the supplied photo's existing sharpness and grain. Before "
+    "generating the image, describe the new pose in one short English "
+    "sentence."
+)
+
 
 @app.route("/")
 def index():
     return render_template(
         "index.html",
         quick_max=QUICK_MAX,
-        poseset_min=POSESET_MIN,
         poseset_max=POSESET_MAX,
         background_groups=BACKGROUND_GROUPS,
         products=[(key, val["label"]) for key, val in PRODUCTS.items()],
@@ -372,27 +391,16 @@ def process():
         product_type = "top"
     product = PRODUCTS[product_type]
 
-    background = request.form.get("background", "studio")
-    if background not in BACKGROUNDS:
-        background = "studio"
-
-    if keep_scene:
-        # 고른 컷의 배경·모델·의상을 그대로 두고 서 있는 포즈만 바꾼다.
-        count = max(POSESET_MIN, min(count, POSESET_MAX))
+    if mode == "poseset" or keep_scene:
+        # 보낸 사진을 그대로 두고 서 있는 포즈만 바꾼다. 배경 선택은 쓰지 않는다.
+        count = max(1, min(count, POSESET_MAX))
         pose_list = STANDING_POSES
         scene_block = KEEP_SCENE_RULE
-    elif mode == "poseset":
-        # 배경 하나를 고정하고 엄선된 포즈만 바꿔가며 촬영한 것처럼 만든다.
-        count = max(POSESET_MIN, min(count, POSESET_MAX))
-        if background == "auto":
-            background = "studio"
-        pose_list = POSES
-        scene_block = (
-            BACKGROUND_RULE_TEMPLATE.format(setting=BACKGROUNDS[background])
-            + " "
-            + LOCATION_RULE_FIXED
-        )
+        template = PROMPT_SAME_SCENE
     else:
+        background = request.form.get("background", "studio")
+        if background not in BACKGROUNDS:
+            background = "studio"
         count = max(1, min(count, QUICK_MAX))
         pose_list = POSES
         scene_block = (
@@ -400,6 +408,7 @@ def process():
             + " "
             + LOCATION_RULE_VARY
         )
+        template = PROMPT_NEW_SCENE
 
     accessories = (request.form.get("accessories") or "").strip()
     accessory_rule = (
@@ -417,7 +426,7 @@ def process():
     try:
         for i in range(count):
             pose = pose_list[i % len(pose_list)]
-            prompt = PROMPT_TEMPLATE.format(
+            prompt = template.format(
                 focus=product["focus"],
                 framing=product["framing"],
                 face_rule=FACE_RULE,

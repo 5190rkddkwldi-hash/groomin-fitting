@@ -231,7 +231,7 @@
           <input type="radio" id="mode-quick" name="mode" value="quick" checked>
           <label for="mode-quick">빠른 생성<br><span class="seg-sub">최대 {{ quick_max }}장 · 장소 다양</span></label>
           <input type="radio" id="mode-poseset" name="mode" value="poseset">
-          <label for="mode-poseset">포즈 모음<br><span class="seg-sub">{{ poseset_min }}~{{ poseset_max }}장 · 배경 고정</span></label>
+          <label for="mode-poseset">포즈 모음<br><span class="seg-sub">최대 {{ poseset_max }}장 · 사진 그대로</span></label>
         </div>
         <p class="help" id="modeHelp">한 장씩 다른 장소에서 찍은 것처럼 만듭니다.</p>
       </div>
@@ -246,7 +246,7 @@
         </div>
       </div>
 
-      <div class="field">
+      <div class="field" id="bgField">
         <label class="lbl">배경 분위기</label>
         {% for group, items in background_groups %}
         <div class="group">
@@ -318,27 +318,25 @@ drop.addEventListener("drop", (e) => {
 
 // 모드에 따라 생성 개수 범위와 안내 문구를 전환
 const QUICK_MAX = {{ quick_max }};
-const POSESET_MIN = {{ poseset_min }};
 const POSESET_MAX = {{ poseset_max }};
 const countInput = document.getElementById("count");
 const countHelp = document.getElementById("countHelp");
 const modeHelp = document.getElementById("modeHelp");
-const autoChip = document.getElementById("bg-auto");
+const bgField = document.getElementById("bgField");
 
 function applyMode() {
   const poseset = document.getElementById("mode-poseset").checked;
+  // 포즈 모음은 올린 사진의 배경을 그대로 쓰므로 배경 선택 자체가 필요 없다.
+  bgField.hidden = poseset;
+  countInput.min = 1;
+  countInput.max = poseset ? POSESET_MAX : QUICK_MAX;
+  if (+countInput.value > +countInput.max) countInput.value = countInput.max;
   if (poseset) {
-    countInput.min = POSESET_MIN;
-    countInput.max = POSESET_MAX;
-    countInput.value = POSESET_MAX;
     countHelp.textContent =
-      `엄선된 포즈 ${POSESET_MIN}~${POSESET_MAX}가지로 만듭니다. 장수가 많아 5분 이상 걸릴 수 있어요.`;
+      `1~${POSESET_MAX}장까지 만듭니다. 장수가 많으면 5분 이상 걸릴 수 있어요.`;
     modeHelp.textContent =
-      "고른 배경 한 곳에서 포즈만 바꿔가며 촬영한 것처럼 만듭니다. ‘랜덤’을 고르면 렌탈 스튜디오로 고정됩니다.";
+      "올린 사진의 배경·모델·의상을 그대로 두고 서 있는 포즈만 바꿉니다.";
   } else {
-    countInput.min = 1;
-    countInput.max = QUICK_MAX;
-    if (countInput.value > QUICK_MAX) countInput.value = 3;
     countHelp.textContent = `서로 다른 포즈로 최대 ${QUICK_MAX}장까지 만듭니다.`;
     modeHelp.textContent = "한 장씩 다른 장소에서 찍은 것처럼 만듭니다.";
   }
