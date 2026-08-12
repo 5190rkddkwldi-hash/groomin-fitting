@@ -45,22 +45,15 @@
 
   <form id="form">
     <fieldset>
-      <label for="apiKey">OpenAI API 키</label>
-      <input type="password" id="apiKey" name="api_key" placeholder="sk-..." required autocomplete="off">
-      <p class="hint">이 서버는 입력하신 키를 저장하지 않습니다. 요청 처리 후 즉시 폐기됩니다.</p>
+      <label for="apiKey">Google AI Studio API 키</label>
+      <input type="password" id="apiKey" name="api_key" placeholder="AIza..." required autocomplete="off">
+      <p class="hint">이 서버는 입력하신 키를 저장하지 않습니다. 요청 처리 후 즉시 폐기됩니다. 키는 aistudio.google.com 에서 발급받을 수 있습니다.</p>
 
       <label for="image">참고 사진</label>
       <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp" required>
 
       <label for="count">생성할 배경 개수</label>
       <input type="number" id="count" name="count" min="1" max="{{ max_count }}" value="3">
-
-      <label for="size">이미지 크기</label>
-      <select id="size" name="size">
-        <option value="1024x1024">정사각형 (1024x1024)</option>
-        <option value="1024x1536">세로형 (1024x1536)</option>
-        <option value="1536x1024">가로형 (1536x1024)</option>
-      </select>
     </fieldset>
 
     <button type="submit" id="submitBtn">배경 생성하기</button>
@@ -80,7 +73,7 @@ const submitBtn = document.getElementById("submitBtn");
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   statusEl.className = "";
-  statusEl.textContent = "처리 중입니다... (배경 분석 후 이미지 생성까지 최대 1분 정도 걸릴 수 있어요)";
+  statusEl.textContent = "처리 중입니다... (개수에 따라 최대 2분 정도 걸릴 수 있어요)";
   promptBox.hidden = true;
   resultsEl.innerHTML = "";
   submitBtn.disabled = true;
