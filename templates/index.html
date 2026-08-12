@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>배경 스타일 생성기</title>
+<title>모델 배경·포즈 변형기</title>
 <style>
   :root { color-scheme: light dark; }
   body {
@@ -28,19 +28,18 @@
   button:disabled { background: #93b4f0; cursor: not-allowed; }
   #status { margin: 16px 0; min-height: 1.5em; }
   #status.error { color: #dc2626; }
-  #promptBox { background: #f3f4f6; padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 0.9rem; white-space: pre-wrap; }
   #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
   #results figure { margin: 0; }
   #results img { width: 100%; border-radius: 8px; display: block; }
-  #results figcaption { text-align: center; margin-top: 6px; }
-  #results a { font-size: 0.85rem; }
+  #results figcaption { text-align: center; margin-top: 6px; font-size: 0.85rem; color: #666; }
+  #results a { display: block; text-align: center; margin-top: 4px; font-size: 0.85rem; }
 </style>
 </head>
 <body>
-  <h1>배경 스타일 생성기</h1>
+  <h1>쇼핑몰 피팅컷 생성기</h1>
   <p class="hint">
-    모델이 상품을 착용한 참고 사진을 올리면, 그 배경의 색감·조명·분위기를 분석해서
-    비슷한 스타일의 새 배경 이미지를 AI로 생성합니다.
+    모델 착용 참고 사진을 올리면, 얼굴 없이(목까지만) 상품 위주로 프레이밍된
+    쇼핑몰 피팅컷 스타일 사진을 트렌디한 야외 배경과 다양한 포즈로 여러 장 생성합니다.
   </p>
 
   <form id="form">
@@ -52,21 +51,25 @@
       <label for="image">참고 사진</label>
       <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp" required>
 
-      <label for="count">생성할 배경 개수</label>
+      <label for="productType">상품 종류</label>
+      <select id="productType" name="product_type">
+        <option value="top">상의 (상반신 위주로 프레이밍)</option>
+        <option value="bottom">하의/바지 (전신, 하반신 위주로 프레이밍)</option>
+      </select>
+
+      <label for="count">생성할 사진 개수 (포즈별로 하나씩)</label>
       <input type="number" id="count" name="count" min="1" max="{{ max_count }}" value="3">
     </fieldset>
 
-    <button type="submit" id="submitBtn">배경 생성하기</button>
+    <button type="submit" id="submitBtn">사진 생성하기</button>
   </form>
 
   <div id="status"></div>
-  <div id="promptBox" hidden></div>
   <div id="results"></div>
 
 <script>
 const form = document.getElementById("form");
 const statusEl = document.getElementById("status");
-const promptBox = document.getElementById("promptBox");
 const resultsEl = document.getElementById("results");
 const submitBtn = document.getElementById("submitBtn");
 
@@ -74,7 +77,6 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
   statusEl.className = "";
   statusEl.textContent = "처리 중입니다... (개수에 따라 최대 2분 정도 걸릴 수 있어요)";
-  promptBox.hidden = true;
   resultsEl.innerHTML = "";
   submitBtn.disabled = true;
 
@@ -89,22 +91,21 @@ form.addEventListener("submit", async (e) => {
       throw new Error(data.error || "알 수 없는 오류가 발생했습니다.");
     }
 
-    statusEl.textContent = `완료되었습니다. (${data.images.length}개 생성)`;
-    promptBox.hidden = false;
-    promptBox.textContent = "분석된 스타일: " + data.prompt;
+    statusEl.textContent = `완료되었습니다. (${data.results.length}개 생성)`;
 
-    data.images.forEach((src, i) => {
+    data.results.forEach((item, i) => {
       const fig = document.createElement("figure");
       const img = document.createElement("img");
-      img.src = src;
+      img.src = item.image;
       const caption = document.createElement("figcaption");
+      caption.textContent = item.caption;
       const link = document.createElement("a");
-      link.href = src;
-      link.download = `background_${i + 1}.png`;
+      link.href = item.image;
+      link.download = `variant_${i + 1}.png`;
       link.textContent = "다운로드";
-      caption.appendChild(link);
       fig.appendChild(img);
       fig.appendChild(caption);
+      fig.appendChild(link);
       resultsEl.appendChild(fig);
     });
   } catch (err) {
