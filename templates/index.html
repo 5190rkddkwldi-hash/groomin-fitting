@@ -28,7 +28,39 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  .wrap { max-width: 860px; margin: 0 auto; padding: 56px 20px 80px; }
+  /* ---- 상단 탭 내비게이션 ---- */
+  .topnav {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 6px;
+    padding: 12px 20px;
+    background: rgba(11,11,13,.88);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  .topnav .brand {
+    font-weight: 800; letter-spacing: .2em; font-size: .7rem;
+    color: var(--muted); margin-right: 14px; text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .topnav .tab {
+    padding: 8px 16px; border-radius: 999px; text-decoration: none;
+    color: var(--muted); font-size: .86rem; font-weight: 700;
+    border: 1px solid transparent; transition: all .15s; white-space: nowrap;
+  }
+  .topnav .tab:hover { color: var(--text); }
+  .topnav .tab.active {
+    background: var(--surface-2); color: var(--accent);
+    border-color: var(--border);
+  }
+
+  .remember {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 0.78rem; color: var(--muted); margin-top: 8px;
+    cursor: pointer; user-select: none;
+  }
+  .remember input { accent-color: var(--accent); cursor: pointer; }
+
+  .wrap { max-width: 860px; margin: 0 auto; padding: 44px 20px 80px; }
 
   header { margin-bottom: 40px; }
   .eyebrow {
@@ -221,6 +253,13 @@
 </style>
 </head>
 <body>
+
+<nav class="topnav">
+  <span class="brand">Shop Tools</span>
+  <a href="/" class="tab active">피팅컷 생성</a>
+  <a href="/planner" class="tab">상세페이지 기획</a>
+</nav>
+
 <div class="wrap">
 
   <header>
@@ -238,7 +277,8 @@
       <div class="field">
         <label class="lbl" for="apiKey">Google AI Studio API 키</label>
         <input type="password" id="apiKey" name="api_key" placeholder="AIza..." required autocomplete="off">
-        <p class="help">키는 저장되지 않고 요청 처리 후 바로 폐기됩니다. aistudio.google.com 에서 무료 발급 가능해요.</p>
+        <label class="remember"><input type="checkbox" id="rememberKey"> 이 브라우저에 키 기억하기</label>
+        <p class="help">키는 서버에 저장되지 않습니다. '기억하기'를 켜면 내 브라우저에만 보관돼요. aistudio.google.com 에서 무료 발급 가능.</p>
       </div>
 
       <div class="field">
@@ -373,6 +413,22 @@ function wireDrop(dropEl, inputEl, textEl, previewEl, defaultText) {
 }
 
 wireDrop(drop, fileInput, dropText, preview);
+
+// ---- API 키 기억하기 (브라우저 localStorage — 기획 페이지와 공유) ----
+const apiKeyInput = document.getElementById("apiKey");
+const rememberKey = document.getElementById("rememberKey");
+const KEY_STORE = "gemini_api_key";
+const savedKey = localStorage.getItem(KEY_STORE);
+if (savedKey) { apiKeyInput.value = savedKey; rememberKey.checked = true; }
+function syncKey() {
+  if (rememberKey.checked && apiKeyInput.value.trim()) {
+    localStorage.setItem(KEY_STORE, apiKeyInput.value.trim());
+  } else if (!rememberKey.checked) {
+    localStorage.removeItem(KEY_STORE);
+  }
+}
+apiKeyInput.addEventListener("input", syncKey);
+rememberKey.addEventListener("change", syncKey);
 wireDrop(
   document.getElementById("drop2"),
   document.getElementById("detailImage"),

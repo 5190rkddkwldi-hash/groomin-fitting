@@ -10,6 +10,7 @@
 import base64
 import binascii
 import io
+import json
 import random
 
 from flask import Flask, request, jsonify, render_template
@@ -629,6 +630,157 @@ PROMPT_SAME_SCENE = (
 )
 
 
+# ============================================================
+# 상세페이지 기획 (스토리보드 생성) — /planner
+# ChatGPT의 '기획 최적화 테크트리 5.0' 류 GPT를 의류 쇼핑몰 전용으로
+# 재설계한 것. 출력 형식을 JSON 스키마로 고정해 매번 같은 구조의
+# 기획안이 나오도록 한다 (대화형 GPT보다 일관성이 좋은 이유).
+# ============================================================
+
+# 텍스트 모델 — 앞에서부터 시도하고, 없으면(404) 다음 후보로 넘어간다.
+PLAN_MODELS = ["gemini-3.1-flash", "gemini-2.5-flash"]
+
+# 설득 전략 — 상세페이지 전체를 끌고 가는 뼈대. 'auto'면 모델이 상품에
+# 맞는 것을 직접 고른다.
+PLAN_STRATEGIES = {
+    "auto": {
+        "label": "자동 추천",
+        "desc": "",
+    },
+    "problem": {
+        "label": "문제-해결형",
+        "desc": (
+            "고객이 옷에서 겪는 불편(핏이 안 맞음, 소재 불만, 금방 후줄근해짐 등)을 "
+            "먼저 짚고, 이 상품이 그 해결책임을 논리적으로 보여주는 구성"
+        ),
+    },
+    "emotional": {
+        "label": "감성 · 무드형",
+        "desc": (
+            "브랜드 무드와 감성 카피가 중심. 사진의 분위기와 짧은 문장으로 "
+            "'입고 싶다'는 기분을 만드는 구성"
+        ),
+    },
+    "lifestyle": {
+        "label": "라이프스타일형",
+        "desc": (
+            "이 옷을 입고 보내는 하루·상황(출근, 데이트, 주말 나들이)을 "
+            "연출해서 사용 맥락으로 설득하는 구성"
+        ),
+    },
+    "social": {
+        "label": "리뷰 · 신뢰형",
+        "desc": (
+            "후기 인용 자리, 재구매·판매량 수치 자리, 디테일 검증 컷 등 "
+            "사회적 증거와 신뢰 요소를 앞세우는 구성"
+        ),
+    },
+    "compare": {
+        "label": "비교 · 차별형",
+        "desc": (
+            "흔한 일반 제품과 이 상품의 차이를 비교 구조(일반 vs 이 제품)로 "
+            "또렷하게 보여주는 구성"
+        ),
+    },
+    "value": {
+        "label": "구성 · 혜택형",
+        "desc": (
+            "가격 대비 가치, 세트 구성, 혜택을 전면에 내세워 '지금 사는 게 "
+            "이득'임을 강조하는 구성"
+        ),
+    },
+}
+
+# 카피 톤 — 모든 섹션의 문장 말투를 통일한다.
+PLAN_TONES = {
+    "basic": {
+        "label": "깔끔 · 신뢰",
+        "desc": "군더더기 없는 깔끔한 존댓말, 차분하고 신뢰감 있게",
+    },
+    "emotional": {
+        "label": "감성적",
+        "desc": "부드럽고 감성적인 문장, 시적인 표현도 조금 섞어서",
+    },
+    "hip": {
+        "label": "힙 · 캐주얼",
+        "desc": "짧고 힙한 구어체, 친한 또래에게 말하듯 가볍게",
+    },
+    "premium": {
+        "label": "프리미엄",
+        "desc": "절제되고 고급스러운 톤, 짧은 문장, 형용사 남발 금지",
+    },
+}
+
+PLAN_PROMPT = """당신은 한국 온라인 의류 쇼핑몰 상세페이지 기획 전문가입니다.
+아래 상품 정보로, 모바일에서 위→아래로 스크롤하며 읽는 상세페이지의
+스토리보드(기획안)를 작성하세요.
+
+[상품 정보]
+- 상품명: {name}
+- 카테고리: {category}
+- 특징·장점: {features}
+- 소재·핏·디테일: {material}
+- 타겟 고객: {target}
+- 가격대: {price}
+
+[작성 규칙]
+- 설득 전략: {strategy_line}
+- 카피 톤: {tone_desc}. 모든 섹션에서 이 톤을 유지한다.
+- 섹션은 8~10개. 반드시 다음 흐름을 갖춘다: 첫 화면 후킹 → (전략에 맞는
+  공감/문제 제기 또는 무드 연출) → 핵심 장점 소개 → 소재·디테일 →
+  핏·사이즈 안내 → 코디 제안 → 착용컷 갤러리 → 구매 유도 마무리.
+  배송·교환 안내는 맨 마지막.
+- headline(헤드카피)은 15자 안팎으로 짧고 강하게. subcopy는 한 문장.
+- body는 2~4문장. 문장 사이 줄바꿈은 \\n으로.
+- image_guide에는 이 섹션에 어떤 사진을 어떻게 배치할지 구체적으로 쓴다.
+  판매자는 AI 피팅컷 생성기로 얼굴 없는(목 아래 크롭) 착용컷을 만들 수
+  있고, 쓸 수 있는 배경 프리셋은 다음과 같다: {preset_names}.
+  섹션마다 어떤 프리셋 컷을 몇 장 쓰면 좋을지, 누끼컷·디테일 접사가
+  필요한지까지 제안한다.
+- 근거 없는 과장(최고, 1위, 유일 등)과 허위 후기 문구는 쓰지 않는다.
+  리뷰 섹션은 '실제 후기를 넣을 자리'로 안내만 한다.
+- 한국어로 쓴다.
+
+[출력 형식]
+아래 구조의 JSON 하나만 출력한다. 다른 텍스트는 절대 붙이지 않는다.
+{{
+  "one_liner": "이 상품을 한 줄로 정의하는 컨셉 문장",
+  "strategy": {{"main": "사용한 설득 전략 이름", "reason": "이 상품에 이 전략을 쓴 이유 1~2문장"}},
+  "sections": [
+    {{
+      "name": "섹션 이름",
+      "goal": "이 섹션의 역할 한 줄",
+      "headline": "헤드카피",
+      "subcopy": "서브카피 한 문장",
+      "body": "본문 카피",
+      "image_guide": "이미지 연출·배치 가이드",
+      "cta": "구매 유도 문구 (필요한 섹션에만, 없으면 빈 문자열)"
+    }}
+  ],
+  "hashtags": ["상품 등록에 쓸 검색 태그 8~12개, # 없이"]
+}}"""
+
+# 프리셋 한글 라벨 목록 — 기획 프롬프트에서 이미지 가이드 제안에 쓴다.
+PRESET_LABELS = ", ".join(
+    label.replace(" ★", "")
+    for _, items in BACKGROUND_GROUPS
+    for key, label in items
+    if key != "auto"
+)
+
+
+def _extract_json(text):
+    """모델 응답에서 JSON 객체를 꺼낸다. 코드펜스가 붙어도 견딘다."""
+    try:
+        return json.loads(text)
+    except ValueError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end <= start:
+            raise ValueError("no json object found")
+        return json.loads(text[start:end + 1])
+
+
 @app.route("/")
 def index():
     return render_template(
@@ -640,6 +792,107 @@ def index():
         products=[(key, val["label"]) for key, val in PRODUCTS.items()],
         stylings=[(key, val["label"]) for key, val in STYLINGS.items()],
     )
+
+
+@app.route("/planner")
+def planner():
+    return render_template(
+        "planner.html",
+        products=[(key, val["label"]) for key, val in PRODUCTS.items()],
+        strategies=[(key, val["label"]) for key, val in PLAN_STRATEGIES.items()],
+        tones=[(key, val["label"]) for key, val in PLAN_TONES.items()],
+    )
+
+
+@app.route("/api/plan", methods=["POST"])
+def plan():
+    api_key = (request.form.get("api_key") or "").strip()
+    if not api_key:
+        return jsonify(error="Google AI Studio API 키를 입력해주세요."), 400
+
+    name = (request.form.get("name") or "").strip()
+    features = (request.form.get("features") or "").strip()
+    if not name or not features:
+        return jsonify(error="상품명과 특징·장점은 꼭 입력해주세요."), 400
+
+    category = request.form.get("category", "top")
+    if category not in PRODUCTS:
+        category = "top"
+
+    material = (request.form.get("material") or "").strip() or "입력 없음"
+    target = (request.form.get("target") or "").strip() or "20~30대 한국 남성"
+    price = (request.form.get("price") or "").strip() or "입력 없음"
+
+    strategy = request.form.get("strategy", "auto")
+    if strategy not in PLAN_STRATEGIES:
+        strategy = "auto"
+    if strategy == "auto":
+        candidates = " / ".join(
+            f"{v['label']}({v['desc']})"
+            for k, v in PLAN_STRATEGIES.items()
+            if k != "auto"
+        )
+        strategy_line = (
+            "다음 후보 중 이 상품에 가장 잘 맞는 전략을 직접 골라 적용한다: "
+            + candidates
+        )
+    else:
+        s = PLAN_STRATEGIES[strategy]
+        strategy_line = f"반드시 '{s['label']}' 전략으로 구성한다 — {s['desc']}"
+
+    tone = request.form.get("tone", "basic")
+    if tone not in PLAN_TONES:
+        tone = "basic"
+
+    prompt = PLAN_PROMPT.format(
+        name=name[:100],
+        category=PRODUCTS[category]["label"],
+        features=features[:1500],
+        material=material[:800],
+        target=target[:200],
+        price=price[:100],
+        strategy_line=strategy_line,
+        tone_desc=PLAN_TONES[tone]["desc"],
+        preset_names=PRESET_LABELS,
+    )
+
+    client = genai.Client(api_key=api_key)
+    last_err = None
+    for model in PLAN_MODELS:
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.5,
+                ),
+            )
+        except genai_errors.ClientError as e:
+            # 모델이 없는 계정/리전이면 다음 후보 모델로 넘어간다.
+            if e.code == 404:
+                last_err = e
+                continue
+            status = 401 if e.code in (401, 403) else 400
+            return jsonify(error=f"요청이 거부되었습니다: {e.message}"), status
+        except genai_errors.APIError as e:
+            return jsonify(error=f"Gemini 요청 중 오류가 발생했습니다: {e.message}"), 502
+
+        text = (response.text or "").strip()
+        try:
+            data = _extract_json(text)
+        except ValueError:
+            return jsonify(
+                error="기획안 형식을 읽지 못했습니다. 한 번 더 시도해주세요."
+            ), 502
+        if not isinstance(data, dict) or not data.get("sections"):
+            return jsonify(
+                error="기획안이 비어 있습니다. 한 번 더 시도해주세요."
+            ), 502
+        return jsonify(plan=data, model=model)
+
+    msg = last_err.message if last_err else "알 수 없는 오류"
+    return jsonify(error=f"사용 가능한 텍스트 모델을 찾지 못했습니다: {msg}"), 502
 
 
 @app.route("/api/process", methods=["POST"])

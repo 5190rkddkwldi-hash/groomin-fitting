@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PAGE PLANNER — 상세페이지 기획</title>
+<style>
+  * { box-sizing: border-box; }
+
+  :root {
+    --bg: #0b0b0d;
+    --surface: #141418;
+    --surface-2: #1c1c22;
+    --border: #2a2a32;
+    --text: #f2f2f4;
+    --muted: #8b8b96;
+    --accent: #d4ff3f;
+    --accent-dim: #a8cc2f;
+    --danger: #ff5c5c;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Pretendard", -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---- 상단 탭 내비게이션 ---- */
+  .topnav {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 6px;
+    padding: 12px 20px;
+    background: rgba(11,11,13,.88);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  .topnav .brand {
+    font-weight: 800; letter-spacing: .2em; font-size: .7rem;
+    color: var(--muted); margin-right: 14px; text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .topnav .tab {
+    padding: 8px 16px; border-radius: 999px; text-decoration: none;
+    color: var(--muted); font-size: .86rem; font-weight: 700;
+    border: 1px solid transparent; transition: all .15s; white-space: nowrap;
+  }
+  .topnav .tab:hover { color: var(--text); }
+  .topnav .tab.active {
+    background: var(--surface-2); color: var(--accent);
+    border-color: var(--border);
+  }
+
+  .wrap { max-width: 860px; margin: 0 auto; padding: 44px 20px 80px; }
+
+  header { margin-bottom: 40px; }
+  .eyebrow {
+    font-size: 0.72rem; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; margin-bottom: 10px;
+  }
+  h1 {
+    font-size: clamp(1.8rem, 5vw, 2.6rem); font-weight: 800;
+    letter-spacing: -0.03em; margin: 0 0 12px; line-height: 1.15;
+  }
+  .sub { color: var(--muted); font-size: 0.95rem; margin: 0; max-width: 54ch; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 24px;
+    margin-bottom: 18px;
+  }
+
+  .field { margin-bottom: 22px; }
+  .field:last-child { margin-bottom: 0; }
+
+  label.lbl {
+    display: block; font-size: 0.8rem; font-weight: 700;
+    letter-spacing: 0.02em; margin-bottom: 8px; color: var(--text);
+  }
+  .opt { color: var(--muted); font-weight: 400; }
+  .help { font-size: 0.78rem; color: var(--muted); margin: 6px 0 0; }
+
+  input[type="password"], input[type="text"], textarea {
+    width: 100%; padding: 12px 14px;
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 11px;
+    font-size: 0.95rem; font-family: inherit;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  textarea { resize: vertical; min-height: 92px; line-height: 1.55; }
+  input:focus, textarea:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(212,255,63,.13);
+  }
+
+  .remember {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 0.78rem; color: var(--muted); margin-top: 8px;
+    cursor: pointer; user-select: none;
+  }
+  .remember input { accent-color: var(--accent); cursor: pointer; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chips input { position: absolute; opacity: 0; pointer-events: none; }
+  .chips label {
+    padding: 8px 14px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 999px;
+    font-size: 0.83rem; cursor: pointer; transition: all .15s;
+    user-select: none; white-space: nowrap;
+  }
+  .chips label:hover { border-color: #3d3d47; }
+  .chips input:checked + label {
+    background: var(--accent); border-color: var(--accent);
+    color: #14140a; font-weight: 700;
+  }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+
+  button.go {
+    width: 100%; padding: 16px; margin-top: 4px;
+    background: var(--accent); color: #14140a;
+    border: none; border-radius: 14px;
+    font-size: 1rem; font-weight: 800; font-family: inherit;
+    letter-spacing: -0.01em; cursor: pointer;
+    transition: transform .12s, background .15s;
+  }
+  button.go:hover:not(:disabled) { background: #e2ff60; transform: translateY(-1px); }
+  button.go:active:not(:disabled) { transform: translateY(0); }
+  button.go:disabled { background: #3a3f28; color: #7c7f68; cursor: not-allowed; }
+
+  #status {
+    margin: 20px 0; font-size: 0.9rem; color: var(--muted);
+    display: flex; align-items: center; gap: 10px; min-height: 24px;
+  }
+  #status.error { color: var(--danger); }
+  .spinner {
+    width: 15px; height: 15px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin .7s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---- 결과 ---- */
+  #resultBar {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px;
+  }
+  .toolbtn {
+    padding: 11px 18px; background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 11px;
+    font-size: 0.86rem; font-weight: 700; font-family: inherit;
+    cursor: pointer; transition: all .15s;
+  }
+  .toolbtn:hover { background: var(--accent); border-color: var(--accent); color: #14140a; }
+
+  .concept {
+    background: linear-gradient(135deg, #1d2210, var(--surface));
+    border: 1px solid #39421f;
+    border-radius: 18px; padding: 22px 24px; margin-bottom: 18px;
+  }
+  .concept .one-liner {
+    font-size: 1.15rem; font-weight: 800; letter-spacing: -0.02em;
+    line-height: 1.4; margin: 0 0 10px;
+  }
+  .concept .strat {
+    font-size: 0.84rem; color: var(--muted); margin: 0;
+  }
+  .concept .strat b { color: var(--accent); font-weight: 700; }
+
+  .sec {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 18px; padding: 22px 24px; margin-bottom: 14px;
+  }
+  .sec-head {
+    display: flex; align-items: flex-start; gap: 13px; margin-bottom: 16px;
+  }
+  .badge {
+    flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--accent); font-weight: 800; font-size: 0.82rem;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sec-name { font-weight: 800; font-size: 1rem; letter-spacing: -0.01em; }
+  .sec-goal { font-size: 0.78rem; color: var(--muted); margin-top: 1px; }
+  .sec-copy-btn {
+    margin-left: auto; flex-shrink: 0;
+    padding: 7px 13px; background: var(--surface-2); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 9px;
+    font-size: 0.76rem; font-weight: 700; font-family: inherit;
+    cursor: pointer; transition: all .15s;
+  }
+  .sec-copy-btn:hover { background: var(--accent); border-color: var(--accent); color: #14140a; }
+
+  .headline {
+    font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em;
+    line-height: 1.35; margin: 0 0 4px;
+  }
+  .subcopy { font-size: 0.92rem; color: #c9c9d2; margin: 0 0 12px; }
+  .body-copy {
+    font-size: 0.88rem; color: var(--muted); line-height: 1.7;
+    margin: 0 0 14px; white-space: pre-line;
+  }
+  .guide {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 11px; padding: 12px 14px;
+    font-size: 0.82rem; color: #b9c49a; line-height: 1.6;
+  }
+  .guide b { color: var(--accent); font-weight: 700; }
+  .cta-line {
+    margin-top: 12px; padding: 11px 14px;
+    background: rgba(212,255,63,.08); border: 1px dashed var(--accent-dim);
+    border-radius: 11px; font-size: 0.88rem; font-weight: 700;
+    color: var(--accent);
+  }
+
+  .tags {
+    display: flex; flex-wrap: wrap; gap: 7px; margin-top: 4px;
+  }
+  .tags span {
+    padding: 6px 12px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 999px;
+    font-size: 0.78rem; color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<nav class="topnav">
+  <span class="brand">Shop Tools</span>
+  <a href="/" class="tab">피팅컷 생성</a>
+  <a href="/planner" class="tab active">상세페이지 기획</a>
+</nav>
+
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">AI Detail Page Planner</div>
+    <h1>상세페이지<br>기획 자동 설계</h1>
+    <p class="sub">
+      상품명과 장점만 적으면 상세페이지 스토리보드를 통째로 설계해드려요.
+      섹션 구성, 헤드카피, 이미지 배치 가이드, 구매 유도 문구까지 —
+      피팅컷 생성기로 만든 컷을 어디에 쓸지도 함께 제안합니다.
+    </p>
+  </header>
+
+  <form id="form">
+
+    <div class="card">
+      <div class="field">
+        <label class="lbl" for="apiKey">Google AI Studio API 키</label>
+        <input type="password" id="apiKey" name="api_key" placeholder="AIza..." required autocomplete="off">
+        <label class="remember"><input type="checkbox" id="rememberKey"> 이 브라우저에 키 기억하기</label>
+        <p class="help">키는 서버에 저장되지 않습니다. '기억하기'를 켜면 내 브라우저에만 보관돼요.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="field">
+        <label class="lbl" for="pname">상품명 <span class="opt">(필수)</span></label>
+        <input type="text" id="pname" name="name" required
+               placeholder="예: 워싱 데님 와이드 팬츠">
+      </div>
+
+      <div class="field">
+        <label class="lbl">상품 종류</label>
+        <div class="chips">
+          {% for key, label in products %}
+          <input type="radio" id="cat-{{ key }}" name="category" value="{{ key }}" {% if loop.first %}checked{% endif %}>
+          <label for="cat-{{ key }}">{{ label }}</label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="lbl" for="features">특징 · 장점 <span class="opt">(필수 — 아는 대로 편하게)</span></label>
+        <textarea id="features" name="features" required
+                  placeholder="예: 14온스 데님인데 워싱을 많이 해서 뻣뻣하지 않음. 밑위가 길어서 편하고 통이 넓은데 지저분해 보이지 않는 와이드 핏. 봉제선이 튼튼함."></textarea>
+        <p class="help">문장이 아니어도 됩니다. 단어만 나열해도 알아서 카피로 다듬어드려요.</p>
+      </div>
+
+      <div class="field">
+        <label class="lbl" for="material">소재 · 핏 · 사이즈 정보 <span class="opt">(선택)</span></label>
+        <textarea id="material" name="material" style="min-height:70px"
+                  placeholder="예: 면 100%, 총장 105cm, S/M/L, 정사이즈보다 한 치수 크게 나옴"></textarea>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label class="lbl" for="target">타겟 고객 <span class="opt">(선택)</span></label>
+          <input type="text" id="target" name="target" placeholder="예: 20~30대 남성 (기본값)">
+        </div>
+        <div class="field">
+          <label class="lbl" for="price">가격대 <span class="opt">(선택)</span></label>
+          <input type="text" id="price" name="price" placeholder="예: 39,000원">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="field">
+        <label class="lbl">설득 전략 <span class="opt">(페이지 전체의 뼈대)</span></label>
+        <div class="chips">
+          {% for key, label in strategies %}
+          <input type="radio" id="strat-{{ key }}" name="strategy" value="{{ key }}" {% if key == 'auto' %}checked{% endif %}>
+          <label for="strat-{{ key }}">{{ label }}</label>
+          {% endfor %}
+        </div>
+        <p class="help">잘 모르겠으면 '자동 추천'을 그대로 두세요. 상품에 맞는 전략을 골라드립니다.</p>
+      </div>
+
+      <div class="field">
+        <label class="lbl">카피 톤</label>
+        <div class="chips">
+          {% for key, label in tones %}
+          <input type="radio" id="tone-{{ key }}" name="tone" value="{{ key }}" {% if key == 'basic' %}checked{% endif %}>
+          <label for="tone-{{ key }}">{{ label }}</label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" class="go" id="submitBtn">기획안 생성하기</button>
+  </form>
+
+  <div id="status"></div>
+
+  <div id="resultBar" hidden>
+    <button type="button" class="toolbtn" id="copyAllBtn">📋 전체 복사</button>
+    <button type="button" class="toolbtn" id="saveBtn">↓ 파일로 저장 (.md)</button>
+    <button type="button" class="toolbtn" id="againBtn">↻ 같은 조건으로 다시</button>
+  </div>
+  <div id="result"></div>
+
+</div>
+
+<script>
+const form = document.getElementById("form");
+const statusEl = document.getElementById("status");
+const resultEl = document.getElementById("result");
+const resultBar = document.getElementById("resultBar");
+const submitBtn = document.getElementById("submitBtn");
+
+// ---- API 키 기억하기 (브라우저 localStorage — 피팅컷 페이지와 공유) ----
+const apiKeyInput = document.getElementById("apiKey");
+const rememberKey = document.getElementById("rememberKey");
+const KEY_STORE = "gemini_api_key";
+const saved = localStorage.getItem(KEY_STORE);
+if (saved) { apiKeyInput.value = saved; rememberKey.checked = true; }
+function syncKey() {
+  if (rememberKey.checked && apiKeyInput.value.trim()) {
+    localStorage.setItem(KEY_STORE, apiKeyInput.value.trim());
+  } else if (!rememberKey.checked) {
+    localStorage.removeItem(KEY_STORE);
+  }
+}
+apiKeyInput.addEventListener("input", syncKey);
+rememberKey.addEventListener("change", syncKey);
+
+function setStatus(text, isError = false, spinning = false) {
+  statusEl.className = isError ? "error" : "";
+  statusEl.innerHTML = "";
+  if (spinning) {
+    const s = document.createElement("div");
+    s.className = "spinner";
+    statusEl.appendChild(s);
+  }
+  statusEl.appendChild(document.createTextNode(text));
+}
+
+let lastPlan = null;
+let lastName = "";
+let running = false;
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (running) return;
+  running = true;
+  submitBtn.disabled = true;
+  submitBtn.textContent = "기획안 작성 중...";
+  resultBar.hidden = true;
+  resultEl.innerHTML = "";
+  setStatus("상품을 분석하고 기획안을 쓰고 있어요. 20~40초쯤 걸립니다.", false, true);
+
+  try {
+    const fd = new FormData(form);
+    const resp = await fetch("/api/plan", { method: "POST", body: fd });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "알 수 없는 오류가 발생했습니다.");
+    lastPlan = data.plan;
+    lastName = document.getElementById("pname").value.trim();
+    renderPlan(lastPlan);
+    setStatus(`완성! 섹션 ${lastPlan.sections.length}개로 구성했어요. 카피는 그대로 쓰기보다 내 말투로 한 번 다듬는 걸 추천해요.`);
+    resultBar.hidden = false;
+    resultEl.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+  running = false;
+  submitBtn.disabled = false;
+  submitBtn.textContent = "기획안 생성하기";
+});
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text) n.textContent = text;
+  return n;
+}
+
+function renderPlan(p) {
+  resultEl.innerHTML = "";
+
+  // 컨셉 요약
+  const concept = el("div", "concept");
+  concept.appendChild(el("p", "one-liner", "“" + (p.one_liner || lastName) + "”"));
+  if (p.strategy && p.strategy.main) {
+    const strat = el("p", "strat");
+    const b = el("b", null, p.strategy.main);
+    strat.appendChild(document.createTextNode("설득 전략 — "));
+    strat.appendChild(b);
+    if (p.strategy.reason) strat.appendChild(document.createTextNode(" · " + p.strategy.reason));
+    concept.appendChild(strat);
+  }
+  resultEl.appendChild(concept);
+
+  // 섹션 카드
+  (p.sections || []).forEach((s, i) => {
+    const sec = el("div", "sec");
+
+    const head = el("div", "sec-head");
+    head.appendChild(el("div", "badge", String(i + 1).padStart(2, "0")));
+    const nameBox = el("div");
+    nameBox.appendChild(el("div", "sec-name", s.name || `섹션 ${i + 1}`));
+    if (s.goal) nameBox.appendChild(el("div", "sec-goal", s.goal));
+    head.appendChild(nameBox);
+    const copyBtn = el("button", "sec-copy-btn", "복사");
+    copyBtn.type = "button";
+    copyBtn.addEventListener("click", () => {
+      copyText(sectionToText(s, i), copyBtn);
+    });
+    head.appendChild(copyBtn);
+    sec.appendChild(head);
+
+    if (s.headline) sec.appendChild(el("p", "headline", s.headline));
+    if (s.subcopy) sec.appendChild(el("p", "subcopy", s.subcopy));
+    if (s.body) sec.appendChild(el("p", "body-copy", s.body));
+
+    if (s.image_guide) {
+      const g = el("div", "guide");
+      const b = el("b", null, "📷 이미지 가이드  ");
+      g.appendChild(b);
+      g.appendChild(document.createTextNode(s.image_guide));
+      sec.appendChild(g);
+    }
+    if (s.cta) sec.appendChild(el("div", "cta-line", "🛒 " + s.cta));
+
+    resultEl.appendChild(sec);
+  });
+
+  // 해시태그
+  if (p.hashtags && p.hashtags.length) {
+    const sec = el("div", "sec");
+    const head = el("div", "sec-head");
+    head.appendChild(el("div", "badge", "#"));
+    const nameBox = el("div");
+    nameBox.appendChild(el("div", "sec-name", "검색 태그"));
+    nameBox.appendChild(el("div", "sec-goal", "상품 등록할 때 붙여넣으세요"));
+    head.appendChild(nameBox);
+    const copyBtn = el("button", "sec-copy-btn", "복사");
+    copyBtn.type = "button";
+    copyBtn.addEventListener("click", () =>
+      copyText(p.hashtags.map(t => "#" + String(t).replace(/^#/, "")).join(" "), copyBtn));
+    head.appendChild(copyBtn);
+    sec.appendChild(head);
+    const tags = el("div", "tags");
+    p.hashtags.forEach(t => tags.appendChild(el("span", null, "#" + String(t).replace(/^#/, ""))));
+    sec.appendChild(tags);
+    resultEl.appendChild(sec);
+  }
+}
+
+function sectionToText(s, i) {
+  const L = [`[${i + 1}. ${s.name || "섹션"}]`];
+  if (s.headline) L.push("헤드카피: " + s.headline);
+  if (s.subcopy) L.push("서브카피: " + s.subcopy);
+  if (s.body) L.push(s.body);
+  if (s.image_guide) L.push("이미지: " + s.image_guide);
+  if (s.cta) L.push("CTA: " + s.cta);
+  return L.join("\n");
+}
+
+function planToMarkdown(p) {
+  const L = [`# ${lastName} — 상세페이지 기획안`];
+  if (p.one_liner) L.push(`> ${p.one_liner}`);
+  if (p.strategy && p.strategy.main) {
+    L.push(`**설득 전략:** ${p.strategy.main}` + (p.strategy.reason ? ` — ${p.strategy.reason}` : ""));
+  }
+  (p.sections || []).forEach((s, i) => {
+    L.push(`\n## ${String(i + 1).padStart(2, "0")}. ${s.name || "섹션"}`);
+    if (s.goal) L.push(`*${s.goal}*`);
+    if (s.headline) L.push(`\n**헤드카피:** ${s.headline}`);
+    if (s.subcopy) L.push(`**서브카피:** ${s.subcopy}`);
+    if (s.body) L.push(`\n${s.body}`);
+    if (s.image_guide) L.push(`\n📷 **이미지:** ${s.image_guide}`);
+    if (s.cta) L.push(`\n🛒 **CTA:** ${s.cta}`);
+  });
+  if (p.hashtags && p.hashtags.length) {
+    L.push(`\n---\n**태그:** ` + p.hashtags.map(t => "#" + String(t).replace(/^#/, "")).join(" "));
+  }
+  return L.join("\n");
+}
+
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    if (btn) {
+      const old = btn.textContent;
+      btn.textContent = "복사됨 ✓";
+      setTimeout(() => { btn.textContent = old; }, 1400);
+    }
+  }).catch(() => setStatus("복사에 실패했어요. 직접 드래그해서 복사해주세요.", true));
+}
+
+document.getElementById("copyAllBtn").addEventListener("click", (e) => {
+  if (lastPlan) copyText(planToMarkdown(lastPlan), e.target);
+});
+
+document.getElementById("saveBtn").addEventListener("click", () => {
+  if (!lastPlan) return;
+  const blob = new Blob([planToMarkdown(lastPlan)], { type: "text/markdown;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${lastName || "상세페이지"}_기획안.md`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+document.getElementById("againBtn").addEventListener("click", () => {
+  form.requestSubmit();
+});
+</script>
+</body>
+</html>
