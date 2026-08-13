@@ -838,6 +838,18 @@ PRESET_LABELS = ", ".join(
 )
 
 
+def _friendly_client_error(e):
+    """구글 오류를 비개발자도 알아듣는 한국어 안내로 바꾼다."""
+    msg = e.message or ""
+    if "API key not valid" in msg or "API_KEY_INVALID" in msg:
+        return ("API 키가 올바르지 않습니다. aistudio.google.com에서 발급한 "
+                "'AIza'로 시작하는 키 전체를 공백 없이 붙여넣어주세요.")
+    if e.code == 429 or "RESOURCE_EXHAUSTED" in msg or "quota" in msg.lower():
+        return ("API 사용량 한도에 걸렸습니다. 잠시(1분쯤) 후 다시 시도하거나, "
+                "aistudio.google.com에서 결제를 등록하면 한도가 늘어납니다.")
+    return f"요청이 거부되었습니다: {msg}"
+
+
 def _extract_json(text):
     """모델 응답에서 JSON 객체를 꺼낸다. 코드펜스가 붙어도 견딘다."""
     try:
@@ -984,7 +996,7 @@ def plan():
                 last_err = e
                 continue
             status = 401 if e.code in (401, 403) else 400
-            return jsonify(error=f"요청이 거부되었습니다: {e.message}"), status
+            return jsonify(error=_friendly_client_error(e)), status
         except genai_errors.APIError as e:
             return jsonify(error=f"Gemini 요청 중 오류가 발생했습니다: {e.message}"), 502
 
@@ -1199,7 +1211,7 @@ def process():
         # 이미 만들어진 컷이 있다면 버리지 않고 경고와 함께 돌려준다.
         if not results:
             status = 401 if e.code in (401, 403) else 400
-            return jsonify(error=f"요청이 거부되었습니다: {e.message}"), status
+            return jsonify(error=_friendly_client_error(e)), status
         warning = f"일부 컷 생성이 중단되었습니다: {e.message}"
     except genai_errors.APIError as e:
         if not results:
