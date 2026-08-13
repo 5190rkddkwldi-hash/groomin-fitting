@@ -51,6 +51,10 @@ POSES = [
     "drawing attention to its detail and texture",
     "photographed from a slightly low angle so the body line looks long "
     "and the garment's proportions read clearly",
+    "standing at a three-quarter diagonal angle with both hands tucked "
+    "behind the lower back, arms half-hidden behind the torso, chest "
+    "open and shoulders relaxed, the front of the outfit fully "
+    "unobstructed",
 ]
 
 # 카테고리별 프레이밍 — 상품이 화면에서 주인공이 되도록 컷을 다르게 잡는다.
@@ -181,8 +185,11 @@ STANDING_POSES = [
     "garment downward, chin-side shoulder relaxed",
     "one arm bent with the hand pressed flat against the chest smoothing "
     "the fabric, the other hand slipped into a pocket",
-    "hands clasped loosely behind the back, chest open, torso twisted a "
-    "few degrees so the garment wraps with the turn",
+    "standing at a three-quarter diagonal angle to the camera, both "
+    "hands tucked away behind the lower back so the arms half-disappear "
+    "behind the torso, chest open, shoulders relaxed, weight settled on "
+    "the back leg with the front foot angled toward the camera — the "
+    "front of the garment hangs completely unobstructed",
     "one arm swinging slightly across the body as if caught mid-motion, "
     "the sleeve moving with it, the other hand in a pocket, weight "
     "shifting between legs",
