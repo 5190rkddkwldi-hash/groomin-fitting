@@ -38,11 +38,6 @@ POSES = [
     "railing in the scene",
     "standing square to the camera with both hands in pockets, elbows "
     "relaxed outward",
-    "in full profile from the side, showing the silhouette and side line "
-    "of the garment",
-    "seen from behind, showing the back of the garment and its fit across "
-    "the shoulders and back",
-    "seated naturally on steps, a bench or a low ledge, posture relaxed",
     "standing in a soft contrapposto — one knee slightly bent, hips "
     "gently shifted, a natural unposed stance",
     "standing with arms lightly crossed, upper body angled a few degrees "
@@ -371,11 +366,6 @@ BACKGROUNDS = {
         "the leaves onto a clean paved walkway. Soft layered greenery "
         "recedes behind the body, deep enough to give the frame air"
     ),
-    "forest": (
-        "on a calm forest trail with tall slender trunks, soft green "
-        "foliage, and gentle light filtering down through the canopy in "
-        "quiet shafts. Cool green shade with warm highlights"
-    ),
     "field": (
         "in an open grassy field or meadow with a soft low horizon, dry "
         "golden grass moving slightly in the breeze, and warm "
@@ -421,15 +411,6 @@ BACKGROUNDS = {
         "photo taken inside the shop. Lived-in and unstaged, not a "
         "decorated set"
     ),
-    "mirror": (
-        "as a mirror selfie: the model stands in front of a large "
-        "full-length mirror in a shop fitting area or an apartment "
-        "hallway and photographs himself, one hand holding a smartphone "
-        "at chest height so the phone is visible in the reflection — "
-        "adapt the pose so one hand always holds the phone. The "
-        "mirror's edge or frame may enter the shot, with a plain "
-        "lived-in interior behind"
-    ),
     # 카페/갤러리/샵은 '안'이 아니라 '입구 앞'에서 찍는다 — 사용자 레퍼런스 3컷 공통 문법:
     # 외벽+대형 유리, 유리 반사 너머로 실내가 은은하게, 바닥은 보도블록, 파사드는 사선.
     "storefront": (
@@ -442,7 +423,11 @@ BACKGROUNDS = {
         "sidewalk, perhaps a low entrance step or doorway reveal. Shot "
         "from a slight angle so the facade edges and window frames run "
         "diagonally through the frame, in open natural daylight — the "
-        "kind of quick sharp snap taken just outside the door"
+        "kind of quick sharp snap taken just outside the door. The model "
+        "must stand right AT the entrance — beside the door frame, on "
+        "the entrance step, or close against the facade — as if he just "
+        "stepped out of the place, never floating in open space away "
+        "from the building"
     ),
     "roadside": (
         "on an ordinary Korean roadside sidewalk on a bright day — grey "
@@ -462,10 +447,11 @@ BACKGROUNDS = {
 
 # '랜덤'일 때 실제로 돌려 쓸 후보들 (studio/auto 자신은 제외).
 RANDOM_POOL = [
-    "seamless", "concrete_wall", "minimal_wall", "sunlit_room", "gallery",
-    "architecture", "stairwell", "park_path", "forest",
-    "field", "seaside", "rooftop", "street_soft", "golden_hour", "studio",
-    "lawn_park", "stair_steps", "showroom", "mirror", "roadside",
+    # 랜덤은 '한 브랜드가 찍은 세트'처럼 보여야 하므로 무드가 검증된 것만 넣는다.
+    # 들판/바닷가/골든아워는 원할 때 직접 선택하는 용도로만 남긴다.
+    "studio", "seamless", "concrete_wall", "minimal_wall", "sunlit_room",
+    "gallery", "architecture", "stairwell", "street_soft", "rooftop",
+    "park_path", "lawn_park", "stair_steps", "showroom", "roadside",
     "storefront",
 ]
 
@@ -494,7 +480,6 @@ BACKGROUND_GROUPS = [
             ("storefront", "건물 앞 스냅"),
             ("roadside", "거리 스냅"),
             ("showroom", "쇼룸 스냅"),
-            ("mirror", "거울샷"),
         ],
     ),
     (
@@ -510,7 +495,6 @@ BACKGROUND_GROUPS = [
         "자연",
         [
             ("park_path", "공원 산책로"),
-            ("forest", "숲길"),
             ("field", "들판"),
             ("seaside", "바닷가"),
             ("golden_hour", "골든아워"),
@@ -742,8 +726,7 @@ def process():
         # 상의는 사선 벽면·질감 위주의 무드를 한 겹 더 얹는다.
         # 단, 폰카 스냅 계열 배경은 자기만의 빛/장소 문법이 있어서 얹지 않는다.
         snap_style = background in (
-            "lawn_park", "stair_steps", "showroom", "mirror", "roadside",
-            "storefront",
+            "lawn_park", "stair_steps", "showroom", "roadside", "storefront",
         )
         extra["mood_rule"] = (
             TOP_MOOD_RULE if product_type == "top" and not snap_style else ""
