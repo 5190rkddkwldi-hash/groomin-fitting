@@ -445,14 +445,6 @@ BACKGROUNDS = {
         "because that unpolished ordinariness is what makes the photo "
         "believable; strong direct sun with crisp shadows"
     ),
-    "home_room": (
-        "inside a regular lived-in Korean bedroom or studio apartment — "
-        "a bed with plain white bedding, a dark wooden nightstand or "
-        "drawer unit, a diffuser or small everyday objects on top, soft "
-        "daylight from a window mixed with warm room light. The room is "
-        "tidy but clearly a real home, not a styled set — the kind of "
-        "quick try-on photo taken right after the package arrived"
-    ),
     "golden_hour": (
         "outdoors during golden hour, with warm low sun raking across the "
         "scene, long soft shadows stretching across the ground, and a "
@@ -466,7 +458,6 @@ RANDOM_POOL = [
     "quiet_cafe", "architecture", "stairwell", "park_path", "forest",
     "field", "seaside", "rooftop", "street_soft", "golden_hour", "studio",
     "lawn_park", "stair_steps", "showroom", "mirror", "roadside",
-    "home_room",
 ]
 
 # 랜덤일 때 옷에 어울리는 곳을 고르도록 유도.
@@ -492,7 +483,6 @@ BACKGROUND_GROUPS = [
             ("lawn_park", "공원 잔디밭"),
             ("stair_steps", "야외 계단"),
             ("roadside", "거리 스냅"),
-            ("home_room", "집에서 한 컷"),
             ("showroom", "쇼룸 스냅"),
             ("mirror", "거울샷"),
         ],
@@ -744,7 +734,6 @@ def process():
         # 단, 폰카 스냅 계열 배경은 자기만의 빛/장소 문법이 있어서 얹지 않는다.
         snap_style = background in (
             "lawn_park", "stair_steps", "showroom", "mirror", "roadside",
-            "home_room",
         )
         extra["mood_rule"] = (
             TOP_MOOD_RULE if product_type == "top" and not snap_style else ""
