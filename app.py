@@ -1021,10 +1021,19 @@ def process():
         else ""
     )
 
+    # 폰 원본(수 MB)을 그대로 보내면 업로드·처리에 컷당 몇 초씩 낭비된다.
+    # 생성 품질에는 긴 변 1536px이면 충분하므로 그 이상은 줄여서 보낸다.
+    def _load_shrunk(raw, max_side=1536):
+        img = Image.open(io.BytesIO(raw))
+        img.load()
+        if max(img.size) > max_side:
+            img.thumbnail((max_side, max_side), Image.LANCZOS)
+        return img
+
     try:
-        contents_images = [Image.open(io.BytesIO(image_bytes))]
+        contents_images = [_load_shrunk(image_bytes)]
         if detail_bytes:
-            contents_images.append(Image.open(io.BytesIO(detail_bytes)))
+            contents_images.append(_load_shrunk(detail_bytes))
     except (OSError, ValueError):
         return jsonify(error="이미지 파일을 읽지 못했습니다. 다른 파일로 시도해주세요."), 400
 
@@ -1048,18 +1057,23 @@ def process():
                 pose=pose,
                 **extra,
             )
-            response = client.models.generate_content(
-                model=MODEL,
-                contents=[prompt, *contents_images],
-                config=types.GenerateContentConfig(
-                    response_modalities=[types.Modality.TEXT, types.Modality.IMAGE],
-                ),
-            )
+            # 모델이 가끔 이미지 없이 텍스트만 돌려준다(안전필터/일시 오류).
+            # 그 경우 한 번만 즉시 재시도하면 대부분 성공한다.
             image_data_url = None
-            for part in response.parts:
-                if part.inline_data:
-                    b64 = base64.b64encode(part.inline_data.data).decode()
-                    image_data_url = f"data:image/png;base64,{b64}"
+            for attempt in range(2):
+                response = client.models.generate_content(
+                    model=MODEL,
+                    contents=[prompt, *contents_images],
+                    config=types.GenerateContentConfig(
+                        response_modalities=[types.Modality.TEXT, types.Modality.IMAGE],
+                    ),
+                )
+                for part in response.parts:
+                    if part.inline_data:
+                        b64 = base64.b64encode(part.inline_data.data).decode()
+                        image_data_url = f"data:image/png;base64,{b64}"
+                if image_data_url:
+                    break
             if image_data_url:
                 results.append({"image": image_data_url})
     except genai_errors.ClientError as e:
