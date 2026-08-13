@@ -190,6 +190,34 @@
     transition: all .15s;
   }
   #results .dl:hover { background: var(--accent); border-color: var(--accent); color: #14140a; }
+
+  /* 아직 생성 중이거나 실패한 컷의 자리 표시 */
+  #results .slot[hidden] { display: none; }
+  #results .slot {
+    aspect-ratio: 3 / 4;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px;
+    background: var(--surface-2); color: var(--muted);
+    font-size: 0.78rem; text-align: center; padding: 16px;
+  }
+  #results .slot .spinner { width: 22px; height: 22px; }
+  #results .slot.err { color: var(--danger); }
+  .retrybtn {
+    padding: 8px 16px; background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-radius: 9px;
+    font-size: 0.8rem; font-weight: 700; font-family: inherit;
+    cursor: pointer; transition: all .15s;
+  }
+  .retrybtn:hover { background: var(--accent); border-color: var(--accent); color: #14140a; }
+
+  #actions { margin-bottom: 18px; }
+  button.zip {
+    padding: 12px 20px; background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 11px;
+    font-size: 0.88rem; font-weight: 700; font-family: inherit;
+    cursor: pointer; transition: all .15s;
+  }
+  button.zip:hover { background: var(--accent); border-color: var(--accent); color: #14140a; }
 </style>
 </head>
 <body>
@@ -299,6 +327,9 @@
   </form>
 
   <div id="status"></div>
+  <div id="actions" hidden>
+    <button type="button" class="zip" id="zipBtn">↓ 전체 저장 (ZIP)</button>
+  </div>
   <div id="results"></div>
 
 </div>
@@ -351,6 +382,10 @@ wireDrop(
 // 모드에 따라 생성 개수 범위와 안내 문구를 전환
 const QUICK_MAX = {{ quick_max }};
 const POSESET_MAX = {{ poseset_max }};
+// '랜덤' 배경일 때 화면에서 직접 섞어 컷마다 다른 장소를 배정한다
+const RANDOM_POOL = {{ random_pool | tojson }};
+// 동시에 보내는 생성 요청 수 (API 사용량 제한을 넘지 않는 선에서 병렬 처리)
+const CONCURRENCY = 4;
 const countInput = document.getElementById("count");
 const countHelp = document.getElementById("countHelp");
 const modeHelp = document.getElementById("modeHelp");
@@ -367,7 +402,7 @@ function applyMode() {
   if (+countInput.value > +countInput.max) countInput.value = countInput.max;
   if (poseset) {
     countHelp.textContent =
-      `1~${POSESET_MAX}장까지 만듭니다. 장수가 많으면 5분 이상 걸릴 수 있어요.`;
+      `1~${POSESET_MAX}장까지 만듭니다. 여러 장을 동시에 만들어 완성되는 대로 바로 보여드려요.`;
     modeHelp.textContent =
       "올린 사진의 배경·모델·의상을 그대로 두고 서 있는 포즈만 바꿉니다.";
   } else {
@@ -391,95 +426,298 @@ function setStatus(text, isError = false, spinning = false) {
   statusEl.appendChild(document.createTextNode(text));
 }
 
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  resultsEl.innerHTML = "";
-  submitBtn.disabled = true;
-  submitBtn.textContent = "생성 중...";
-  setStatus("이미지를 만들고 있어요. 개수에 따라 최대 2분 정도 걸릴 수 있습니다.", false, true);
+const actionsEl = document.getElementById("actions");
+const zipBtn = document.getElementById("zipBtn");
 
-  try {
-    const resp = await fetch("/api/process", { method: "POST", body: new FormData(form) });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || "알 수 없는 오류가 발생했습니다.");
+let running = false;          // 배치 생성이 진행 중인지
+let batchImages = [];         // ZIP 저장용: 완성된 컷의 {name, dataUrl}
+let batchPrefix = "fitting_cut";
 
-    setStatus(`완료되었습니다 — ${data.results.length}장 생성`);
+// 컷 하나가 들어갈 자리(figure)를 만들어, 로딩 → 완성/실패 상태를 관리한다.
+function createSlot(i, prefix, offerPoseSet) {
+  const fig = document.createElement("figure");
+  const slot = document.createElement("div");
+  slot.className = "slot";
+  fig.appendChild(slot);
+  resultsEl.appendChild(fig);
 
-    renderResults(data.results, "fitting_cut", true);
-  } catch (err) {
-    setStatus("오류: " + err.message, true);
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.textContent = "피팅컷 생성하기";
-  }
-});
+  return {
+    loading() {
+      slot.hidden = false;
+      slot.className = "slot";
+      slot.innerHTML = "";
+      const s = document.createElement("div");
+      s.className = "spinner";
+      slot.appendChild(s);
+      slot.appendChild(document.createTextNode(`${i + 1}번째 컷 만드는 중...`));
+      fig.querySelectorAll("img, .posebtn, .dl, .retrybtn").forEach(el => el.remove());
+    },
+    fill(dataUrl) {
+      slot.hidden = true;
+      const img = document.createElement("img");
+      img.src = dataUrl;
+      img.alt = `생성된 피팅컷 ${i + 1}`;
+      fig.insertBefore(img, slot);
 
-// 결과 카드 렌더링. offerPoseSet=true 이면 각 컷에 '이 컷으로 12포즈' 버튼을 단다.
-function renderResults(results, prefix, offerPoseSet) {
-  resultsEl.innerHTML = "";
-  results.forEach((item, i) => {
-    const fig = document.createElement("figure");
-    const img = document.createElement("img");
-    img.src = item.image;
-    img.alt = `생성된 피팅컷 ${i + 1}`;
-    fig.appendChild(img);
+      if (offerPoseSet) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "posebtn";
+        btn.textContent = `★ 이 컷으로 ${POSESET_MAX}포즈`;
+        btn.addEventListener("click", () => makePoseSet(dataUrl));
+        fig.appendChild(btn);
+      }
 
-    if (offerPoseSet) {
+      const link = document.createElement("a");
+      link.className = "dl";
+      link.href = dataUrl;
+      link.download = `${prefix}_${i + 1}.png`;
+      link.textContent = "↓ 다운로드";
+      fig.appendChild(link);
+    },
+    fail(message, retry) {
+      slot.hidden = false;
+      slot.className = "slot err";
+      slot.innerHTML = "";
+      slot.appendChild(document.createTextNode(`${i + 1}번째 컷 실패`));
+      const msg = document.createElement("div");
+      msg.style.fontSize = "0.72rem";
+      msg.textContent = message;
+      slot.appendChild(msg);
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "posebtn";
-      btn.textContent = `★ 이 컷으로 ${POSESET_MAX}포즈`;
-      btn.addEventListener("click", () => makePoseSet(item.image, btn));
-      fig.appendChild(btn);
-    }
-
-    const link = document.createElement("a");
-    link.className = "dl";
-    link.href = item.image;
-    link.download = `${prefix}_${i + 1}.png`;
-    link.textContent = "↓ 다운로드";
-    fig.appendChild(link);
-
-    resultsEl.appendChild(fig);
-  });
+      btn.className = "retrybtn";
+      btn.textContent = "다시 시도";
+      btn.addEventListener("click", retry);
+      slot.appendChild(btn);
+    },
+  };
 }
 
+// count장의 컷을 CONCURRENCY개씩 병렬로 생성한다.
+// makeFd(i)는 i번째 컷 하나만 요청하는 FormData를 만들어야 한다.
+async function runBatch(count, makeFd, prefix, offerPoseSet) {
+  running = true;
+  submitBtn.disabled = true;
+  submitBtn.textContent = "생성 중...";
+  resultsEl.innerHTML = "";
+  actionsEl.hidden = true;
+  batchImages = [];
+  batchPrefix = prefix;
+
+  const slots = [];
+  const states = [];  // 'pending' | 'ok' | 'fail'
+  for (let i = 0; i < count; i++) {
+    slots.push(createSlot(i, prefix, offerPoseSet));
+    states.push("pending");
+  }
+
+  function refresh(finished) {
+    const ok = states.filter(s => s === "ok").length;
+    const fail = states.filter(s => s === "fail").length;
+    if (!finished) {
+      setStatus(`이미지를 만들고 있어요 — ${ok + fail}/${count}장 처리, 완성되는 대로 바로 표시됩니다.`, false, true);
+    } else if (fail === 0) {
+      setStatus(`완료되었습니다 — ${ok}장 생성`);
+    } else {
+      setStatus(`${ok}장 생성 · ${fail}장 실패 — 실패한 컷은 '다시 시도'를 눌러주세요.`, fail === count);
+    }
+    actionsEl.hidden = ok === 0;
+  }
+
+  async function runOne(i) {
+    states[i] = "pending";
+    slots[i].loading();
+    try {
+      const resp = await fetch("/api/process", { method: "POST", body: makeFd(i) });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "알 수 없는 오류가 발생했습니다.");
+      const dataUrl = data.results[0].image;
+      slots[i].fill(dataUrl);
+      states[i] = "ok";
+      batchImages[i] = { name: `${prefix}_${i + 1}.png`, dataUrl };
+    } catch (err) {
+      states[i] = "fail";
+      slots[i].fail(err.message, () => runOne(i).then(() => refresh(true)));
+    }
+    refresh(false);
+  }
+
+  refresh(false);
+  const queue = Array.from({ length: count }, (_, i) => i);
+  const workers = Array.from({ length: Math.min(CONCURRENCY, count) }, async () => {
+    while (queue.length) await runOne(queue.shift());
+  });
+  await Promise.all(workers);
+
+  refresh(true);
+  running = false;
+  submitBtn.disabled = false;
+  submitBtn.textContent = "피팅컷 생성하기";
+}
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (running) return;
+
+  const poseset = document.getElementById("mode-poseset").checked;
+  const max = poseset ? POSESET_MAX : QUICK_MAX;
+  const count = Math.max(1, Math.min(+countInput.value || 1, max));
+  const apiKey = document.getElementById("apiKey").value.trim();
+  const mainFile = fileInput.files[0];
+  const detailFile = document.getElementById("detailImage").files[0];
+  const productType = document.querySelector('input[name="product_type"]:checked').value;
+  const styling = document.querySelector('input[name="styling"]:checked').value;
+  const accessories = document.getElementById("accessories").value;
+
+  // '랜덤' 배경은 여기서 미리 섞어 컷마다 서로 다른 장소를 배정한다.
+  const bg = poseset ? null
+    : document.querySelector('input[name="background"]:checked').value;
+  let bgList = null;
+  if (bg === "auto") {
+    bgList = [...RANDOM_POOL];
+    for (let i = bgList.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [bgList[i], bgList[j]] = [bgList[j], bgList[i]];
+    }
+  }
+
+  runBatch(count, (i) => {
+    const fd = new FormData();
+    fd.append("api_key", apiKey);
+    fd.append("image", mainFile);
+    if (detailFile) fd.append("detail_image", detailFile);
+    fd.append("mode", poseset ? "poseset" : "quick");
+    fd.append("count", "1");
+    fd.append("index", String(i));
+    fd.append("product_type", productType);
+    fd.append("accessories", accessories);
+    if (!poseset) {
+      fd.append("styling", styling);
+      if (bgList) {
+        fd.append("background", bgList[i % bgList.length]);
+        fd.append("garment_aware", "1");
+      } else {
+        fd.append("background", bg);
+      }
+    }
+    return fd;
+  }, "fitting_cut", !poseset);
+});
+
 // 고른 컷을 레퍼런스로 넘겨 배경·모델·의상은 그대로, 서 있는 포즈만 바꾼다.
-async function makePoseSet(dataUrl, btn) {
+function makePoseSet(dataUrl) {
+  if (running) return;
   const apiKey = document.getElementById("apiKey").value.trim();
   if (!apiKey) { setStatus("API 키를 먼저 입력해주세요.", true); return; }
 
-  document.querySelectorAll(".posebtn").forEach(b => b.disabled = true);
-  submitBtn.disabled = true;
-  btn.textContent = "생성 중...";
-  setStatus(
-    `고른 컷의 배경과 모델을 그대로 두고 ${POSESET_MAX}가지 포즈를 만들고 있어요. ` +
-    `5분 이상 걸릴 수 있습니다.`, false, true);
+  const productType = document.querySelector('input[name="product_type"]:checked').value;
+  const accessories = document.getElementById("accessories").value;
+  const detailFile = document.getElementById("detailImage").files[0];
 
-  const fd = new FormData();
-  fd.append("api_key", apiKey);
-  fd.append("reference", dataUrl);
-  fd.append("count", POSESET_MAX);
-  fd.append("product_type",
-    document.querySelector('input[name="product_type"]:checked').value);
-  fd.append("accessories", document.getElementById("accessories").value);
-  const detail = document.getElementById("detailImage").files[0];
-  if (detail) fd.append("detail_image", detail);
-
-  try {
-    const resp = await fetch("/api/process", { method: "POST", body: fd });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || "알 수 없는 오류가 발생했습니다.");
-    setStatus(`완료되었습니다 — 같은 배경에서 ${data.results.length}가지 포즈`);
-    renderResults(data.results, "pose", false);
-  } catch (err) {
-    setStatus("오류: " + err.message, true);
-  } finally {
-    document.querySelectorAll(".posebtn").forEach(b => b.disabled = false);
-    submitBtn.disabled = false;
-    btn.textContent = `★ 이 컷으로 ${POSESET_MAX}포즈`;
-  }
+  runBatch(POSESET_MAX, (i) => {
+    const fd = new FormData();
+    fd.append("api_key", apiKey);
+    fd.append("reference", dataUrl);
+    fd.append("count", "1");
+    fd.append("index", String(i));
+    fd.append("product_type", productType);
+    fd.append("accessories", accessories);
+    if (detailFile) fd.append("detail_image", detailFile);
+    return fd;
+  }, "pose", false);
 }
+
+// ---------- ZIP 저장 (압축 없이 묶기만 — PNG는 이미 압축돼 있다) ----------
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function dataUrlToBytes(dataUrl) {
+  const bin = atob(dataUrl.split(",")[1]);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+}
+
+function buildZip(files) {
+  const encoder = new TextEncoder();
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+
+  for (const f of files) {
+    const name = encoder.encode(f.name);
+    const data = f.bytes;
+    const crc = crc32(data);
+
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true);
+    local.setUint16(4, 20, true);          // version needed
+    local.setUint16(6, 0, true);           // flags
+    local.setUint16(8, 0, true);           // method: store
+    local.setUint32(10, 0, true);          // time/date
+    local.setUint32(14, crc, true);
+    local.setUint32(18, data.length, true);
+    local.setUint32(22, data.length, true);
+    local.setUint16(26, name.length, true);
+    local.setUint16(28, 0, true);
+    chunks.push(new Uint8Array(local.buffer), name, data);
+
+    const cd = new DataView(new ArrayBuffer(46));
+    cd.setUint32(0, 0x02014b50, true);
+    cd.setUint16(4, 20, true);             // made by
+    cd.setUint16(6, 20, true);             // version needed
+    cd.setUint16(8, 0, true);
+    cd.setUint16(10, 0, true);             // method: store
+    cd.setUint32(12, 0, true);             // time/date
+    cd.setUint32(16, crc, true);
+    cd.setUint32(20, data.length, true);
+    cd.setUint32(24, data.length, true);
+    cd.setUint16(28, name.length, true);
+    cd.setUint32(42, offset, true);        // local header offset
+    central.push(new Uint8Array(cd.buffer), name);
+
+    offset += 30 + name.length + data.length;
+  }
+
+  let cdSize = 0;
+  for (const c of central) cdSize += c.length;
+
+  const eocd = new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0, 0x06054b50, true);
+  eocd.setUint16(8, files.length, true);
+  eocd.setUint16(10, files.length, true);
+  eocd.setUint32(12, cdSize, true);
+  eocd.setUint32(16, offset, true);
+  chunks.push(...central, new Uint8Array(eocd.buffer));
+
+  return new Blob(chunks, { type: "application/zip" });
+}
+
+zipBtn.addEventListener("click", () => {
+  const done = batchImages.filter(Boolean);
+  if (!done.length) return;
+  const blob = buildZip(done.map(f => ({ name: f.name, bytes: dataUrlToBytes(f.dataUrl) })));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${batchPrefix}s.zip`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
 </script>
 </body>
 </html>

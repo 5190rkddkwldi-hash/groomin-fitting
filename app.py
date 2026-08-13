@@ -22,7 +22,7 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 24 * 1024 * 1024  # 참고컷 + 누끼컷 2장
 
 ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
-QUICK_MAX = 4  # 빠른 생성 모드 최대 장수
+QUICK_MAX = 10  # 빠른 생성 모드 최대 장수
 POSESET_MAX = 12  # 포즈 모음 모드 최대 장수 (최소 1)
 MODEL = "gemini-3.1-flash-image"
 
@@ -190,6 +190,25 @@ MODEL_RULE = (
     "and a real chest, filling out the garment rather than hanging flat "
     "on a slim frame. Keep this exact body type, build and skin tone "
     "consistent across every image. "
+)
+
+# 'AI로 만든 티'를 지우는 핵심 규칙. 4910 실제 인기 피팅컷 분석 결과:
+# 전부 무보정 폰카 스냅이고, 하드한 그림자를 피하지 않으며,
+# 모델과 배경이 정확히 같은 빛을 받는다 (실제 사진이므로 당연히).
+REALISM_RULE = (
+    "REALISM — the output must be indistinguishable from a real, "
+    "unedited photo the seller casually shot of the model on a recent "
+    "smartphone: subtle sensor grain, true-to-life slightly muted "
+    "colours, no beauty retouching, no cinematic colour grading, no "
+    "artificial glow. Real surfaces stay imperfect — scuffed pavement, "
+    "faint stains on walls, uneven grass. The model and the background "
+    "MUST share exactly the same light: same direction, same colour "
+    "temperature, same hardness, with a natural contact shadow "
+    "grounding the shoes to the floor. Hard sunlight and deep crisp "
+    "shadows are welcome outdoors at midday. Frame it slightly "
+    "casually, as if handheld — a small tilt or off-centre composition "
+    "is natural. Never render a polished, showroom-perfect editorial "
+    "image. "
 )
 
 # 상의 컷의 배경·분위기. 하의 컷보다 벽면/질감/무드 비중이 크다.
@@ -364,6 +383,40 @@ BACKGROUNDS = {
         "large clean glass, pale stone paving and soft daylight. Only "
         "minimal unobtrusive signage, no crowds, no visual noise"
     ),
+    # ---- 4910 실제 인기컷 분석(2026-08)에서 뽑은 폰카 스냅 계열 ----
+    "lawn_park": (
+        "on an open sunlit lawn in a Korean neighbourhood park at midday "
+        "— slightly patchy green grass underfoot, pine trees and young "
+        "street trees behind, a tall street lamp and a paved walkway in "
+        "the distance, vivid blue sky with a few cumulus clouds. The "
+        "hard overhead sun leaves crisp shadows on the grass, and the "
+        "camera sits at a slightly low angle so the body stands against "
+        "the sky and treeline"
+    ),
+    "stair_steps": (
+        "on wide outdoor concrete stairs beside a raw concrete wall — "
+        "metal handrails, yellow tactile paving blocks at the edge of "
+        "the frame, strong midday sun cutting hard diagonal shadows "
+        "across the steps. Rough, real street architecture with visible "
+        "stains and wear, exactly like a back street of a Korean city"
+    ),
+    "showroom": (
+        "inside a real clothing-shop showroom corner — plain white walls "
+        "with a few framed art prints hanging or leaning slightly "
+        "off-centre, a black leather sofa or a slim chrome rack at the "
+        "edge of the frame, flat bright indoor light like a quick phone "
+        "photo taken inside the shop. Lived-in and unstaged, not a "
+        "decorated set"
+    ),
+    "mirror": (
+        "as a mirror selfie: the model stands in front of a large "
+        "full-length mirror in a shop fitting area or an apartment "
+        "hallway and photographs himself, one hand holding a smartphone "
+        "at chest height so the phone is visible in the reflection — "
+        "adapt the pose so one hand always holds the phone. The "
+        "mirror's edge or frame may enter the shot, with a plain "
+        "lived-in interior behind"
+    ),
     "golden_hour": (
         "outdoors during golden hour, with warm low sun raking across the "
         "scene, long soft shadows stretching across the ground, and a "
@@ -376,6 +429,7 @@ RANDOM_POOL = [
     "seamless", "concrete_wall", "minimal_wall", "sunlit_room", "gallery",
     "quiet_cafe", "architecture", "stairwell", "park_path", "forest",
     "field", "seaside", "rooftop", "street_soft", "golden_hour", "studio",
+    "lawn_park", "stair_steps", "showroom", "mirror",
 ]
 
 # 랜덤일 때 옷에 어울리는 곳을 고르도록 유도.
@@ -393,6 +447,15 @@ BACKGROUND_GROUPS = [
         [
             ("studio", "렌탈 스튜디오 ★"),
             ("auto", "랜덤 (매번 다르게)"),
+        ],
+    ),
+    (
+        "폰카 스냅 (무보정 느낌)",
+        [
+            ("lawn_park", "공원 잔디밭"),
+            ("stair_steps", "야외 계단"),
+            ("showroom", "쇼룸 스냅"),
+            ("mirror", "거울샷"),
         ],
     ),
     (
@@ -428,12 +491,12 @@ BACKGROUND_GROUPS = [
 ]
 
 BACKGROUND_RULE_TEMPLATE = (
-    "Background style: a calm, simple but quietly upscale location, shot "
+    "Background style: a calm, simple, believable location, shot "
     "{setting}. The setting should feel natural and effortless — never "
-    "busy, cluttered or loud. Avoid neon, large signage, heavy text, "
-    "crowds and visual noise. The background must stay soft and secondary "
-    "so the product remains the hero, while still making the item look "
-    "desirable and worth buying."
+    "busy, cluttered or loud. Avoid neon, large signage, heavy text and "
+    "crowds. The background must stay secondary so the product remains "
+    "the hero, while still making the item look desirable and worth "
+    "buying."
 )
 
 # 빠른 생성: 매 컷 장소가 달라져도 됨 / 포즈 모음: 한 장소에서 찍은 것처럼 고정
@@ -481,15 +544,16 @@ ACCESSORY_RULE_TEMPLATE = (
 # 새 장소에서 찍은 것처럼 만드는 경우
 PROMPT_NEW_SCENE = (
     "{detail_rule}Using the exact same {focus} shown in the reference "
-    "photo, generate a new photorealistic image as if shot by a "
-    "professional fashion e-commerce photographer on location. "
+    "photo, generate a new image that looks like a candid fitting-cut "
+    "snapshot the seller took of the model on location with a phone — "
+    "not a studio production. "
     "{garment_lock}"
     "{model_rule}{framing} {face_rule} {scene_block} {mood_rule}Set the "
     "pose to: {pose}. {pose_style}{styling_rule}{accessory_rule}"
+    "{realism_rule}"
     "Keep the whole frame in natural sharp focus — the background must be "
     "clearly readable, NOT blurred, and must never be pixelated, "
-    "mosaicked or smeared. Soft natural lighting, true-to-life colour, "
-    "high-resolution quality. "
+    "mosaicked or smeared. "
     "Output only the image, with no text description."
 )
 
@@ -515,6 +579,7 @@ def index():
         quick_max=QUICK_MAX,
         poseset_max=POSESET_MAX,
         background_groups=BACKGROUND_GROUPS,
+        random_pool=RANDOM_POOL,
         products=[(key, val["label"]) for key, val in PRODUCTS.items()],
         stylings=[(key, val["label"]) for key, val in STYLINGS.items()],
     )
@@ -564,6 +629,13 @@ def process():
     except ValueError:
         count = 3
 
+    # 화면이 컷을 한 장씩 병렬 요청할 때, 몇 번째 컷인지 알려주는 오프셋.
+    # 포즈가 컷마다 달라지는 기준이 된다.
+    try:
+        index = max(0, int(request.form.get("index", 0)))
+    except ValueError:
+        index = 0
+
     product_type = request.form.get("product_type", "top")
     if product_type not in PRODUCTS:
         product_type = "top"
@@ -586,6 +658,10 @@ def process():
         pose_list = POSES
         template = PROMPT_NEW_SCENE
 
+        # 화면이 '랜덤'을 직접 풀어서 컷마다 배경 키를 지정해 보낼 때 붙는 플래그.
+        # 배경이 랜덤으로 골라졌으니 옷에 어울리게 연출하라는 규칙을 유지한다.
+        garment_aware = request.form.get("garment_aware") == "1"
+
         if background == "auto":
             # 진짜 랜덤: 매 요청마다 순서를 섞어 컷마다 다른 장소를 쓴다.
             picks = random.sample(RANDOM_POOL, min(count, len(RANDOM_POOL)))
@@ -601,6 +677,7 @@ def process():
             scene_block = (
                 BACKGROUND_RULE_TEMPLATE.format(setting=BACKGROUNDS[background])
                 + " "
+                + (GARMENT_AWARE_RULE if garment_aware else "")
                 + LOCATION_RULE_VARY
             )
 
@@ -614,8 +691,13 @@ def process():
             else ""
         )
         extra["model_rule"] = MODEL_RULE
+        extra["realism_rule"] = REALISM_RULE
         # 상의는 사선 벽면·질감 위주의 무드를 한 겹 더 얹는다.
-        extra["mood_rule"] = TOP_MOOD_RULE if product_type == "top" else ""
+        # 단, 폰카 스냅 계열 배경은 자기만의 빛/장소 문법이 있어서 얹지 않는다.
+        snap_style = background in ("lawn_park", "stair_steps", "showroom", "mirror")
+        extra["mood_rule"] = (
+            TOP_MOOD_RULE if product_type == "top" and not snap_style else ""
+        )
 
     extra["detail_rule"] = DETAIL_RULE if detail_bytes else ""
 
@@ -626,17 +708,21 @@ def process():
         else ""
     )
 
-    contents_images = [Image.open(io.BytesIO(image_bytes))]
-    if detail_bytes:
-        contents_images.append(Image.open(io.BytesIO(detail_bytes)))
+    try:
+        contents_images = [Image.open(io.BytesIO(image_bytes))]
+        if detail_bytes:
+            contents_images.append(Image.open(io.BytesIO(detail_bytes)))
+    except (OSError, ValueError):
+        return jsonify(error="이미지 파일을 읽지 못했습니다. 다른 파일로 시도해주세요."), 400
 
     client = genai.Client(api_key=api_key)
 
     results = []
+    warning = None
 
     try:
         for i in range(count):
-            pose = pose_list[i % len(pose_list)]
+            pose = pose_list[(index + i) % len(pose_list)]
             block = scene_blocks[i] if scene_blocks else scene_block
             prompt = template.format(
                 focus=product["focus"],
@@ -664,16 +750,22 @@ def process():
             if image_data_url:
                 results.append({"image": image_data_url})
     except genai_errors.ClientError as e:
-        status = 401 if e.code in (401, 403) else 400
-        return jsonify(error=f"요청이 거부되었습니다: {e.message}"), status
+        # 이미 만들어진 컷이 있다면 버리지 않고 경고와 함께 돌려준다.
+        if not results:
+            status = 401 if e.code in (401, 403) else 400
+            return jsonify(error=f"요청이 거부되었습니다: {e.message}"), status
+        warning = f"일부 컷 생성이 중단되었습니다: {e.message}"
     except genai_errors.APIError as e:
-        return jsonify(error=f"Gemini 요청 중 오류가 발생했습니다: {e.message}"), 502
+        if not results:
+            return jsonify(error=f"Gemini 요청 중 오류가 발생했습니다: {e.message}"), 502
+        warning = f"일부 컷 생성이 중단되었습니다: {e.message}"
 
     if not results:
         return jsonify(error="이미지가 생성되지 않았습니다. 다시 시도해주세요."), 502
 
-    return jsonify(results=results)
+    return jsonify(results=results, warning=warning)
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000)
+    # threaded=True: 화면이 컷을 여러 장 동시에 요청하므로 병렬 처리가 필요하다
+    app.run(host="127.0.0.1", port=5000, threaded=True)
