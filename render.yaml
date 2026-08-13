@@ -1,7 +1,7 @@
 services:
   - type: web
     name: groomin-fitting
-    env: python
+    runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
     # 이미지 생성은 컷당 30초 이상 걸릴 수 있어 타임아웃을 넉넉히,
