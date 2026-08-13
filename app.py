@@ -30,7 +30,7 @@ app.config["MAX_CONTENT_LENGTH"] = 24 * 1024 * 1024  # 참고컷 + 누끼컷 2�
 # 배포 시에는 환경변수로 코드와 세션 키를 바꿀 수 있다.
 app.secret_key = os.environ.get("SECRET_KEY", "groomin-fitting-dev-secret")
 app.permanent_session_lifetime = timedelta(days=90)
-REFERRAL_CODE = os.environ.get("REFERRAL_CODE", "그루민2026")
+REFERRAL_CODE = os.environ.get("REFERRAL_CODE", "grooming2026")
 
 ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
 QUICK_MAX = 10  # 빠른 생성 모드 최대 장수

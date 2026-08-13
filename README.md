@@ -30,7 +30,7 @@ Windows는 `run.bat` 더블클릭으로 실행할 수 있습니다 (서버가 �
 ## 로그인
 
 첫 화면에서 **추천인 코드**와 **상호명**을 입력하면 입장됩니다.
-코드 기본값은 `그루민2026`이며, 환경변수 `REFERRAL_CODE`로 바꿀 수 있습니다.
+코드 기본값은 `grooming2026`이며, 환경변수 `REFERRAL_CODE`로 바꿀 수 있습니다.
 세션 서명 키는 `SECRET_KEY` 환경변수로 설정하세요 (미설정 시 개발용 기본값).
 
 ## API 키
@@ -39,6 +39,9 @@ Windows는 `run.bat` 더블클릭으로 실행할 수 있습니다 (서버가 �
 요청마다 직접 입력합니다. 서버는 키를 저장하지 않고 해당 요청 처리에만 씁니다.
 
 ## 배포 (Render)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/5190rkddkwldi-hash/groomin-fitting)
+
 
 `render.yaml`이 포함되어 있어 [Render](https://render.com)에서 저장소를
 연결하면 Blueprint로 바로 배포됩니다. 배포 후 주소는

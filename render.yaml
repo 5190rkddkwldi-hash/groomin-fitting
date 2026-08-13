@@ -11,4 +11,4 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: REFERRAL_CODE
-        value: "그루민2026"
+        value: "grooming2026"
