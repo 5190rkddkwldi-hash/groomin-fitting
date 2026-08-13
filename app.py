@@ -679,8 +679,35 @@ PROMPT_SAME_SCENE = (
 # 기획안이 나오도록 한다 (대화형 GPT보다 일관성이 좋은 이유).
 # ============================================================
 
-# 텍스트 모델 — 앞에서부터 시도하고, 없으면(404) 다음 후보로 넘어간다.
-PLAN_MODELS = ["gemini-3.1-flash", "gemini-2.5-flash"]
+# 텍스트 모델 — 앞에서부터 시도하고, 없거나 은퇴한 모델이면 다음 후보로 넘어간다.
+# 전부 실패하면 계정에서 실제 사용 가능한 flash 계열을 조회해 이어서 시도한다.
+PLAN_MODELS = [
+    "gemini-3.6-flash", "gemini-3.5-flash-lite",
+    "gemini-3.1-flash", "gemini-2.5-flash",
+]
+
+
+def _plan_model_candidates(client):
+    """정적 후보 + 계정에서 조회한 flash 계열 텍스트 모델(최신순)."""
+    candidates = list(PLAN_MODELS)
+    try:
+        discovered = []
+        for m in client.models.list():
+            name = (getattr(m, "name", "") or "").split("/")[-1]
+            actions = getattr(m, "supported_actions", None) or []
+            if actions and "generateContent" not in actions:
+                continue
+            if "flash" not in name:
+                continue
+            if any(x in name for x in
+                   ("image", "live", "tts", "audio", "embedding", "preview")):
+                continue
+            if name not in candidates:
+                discovered.append(name)
+        candidates += sorted(discovered, reverse=True)
+    except Exception:
+        pass  # 목록 조회가 안 되면 정적 후보만으로 진행
+    return candidates
 
 # 설득 전략 — 상세페이지 전체를 끌고 가는 뼈대. 'auto'면 모델이 상품에
 # 맞는 것을 직접 고른다.
@@ -940,7 +967,7 @@ def plan():
 
     client = genai.Client(api_key=api_key)
     last_err = None
-    for model in PLAN_MODELS:
+    for model in _plan_model_candidates(client):
         try:
             response = client.models.generate_content(
                 model=model,
@@ -951,8 +978,9 @@ def plan():
                 ),
             )
         except genai_errors.ClientError as e:
-            # 모델이 없는 계정/리전이면 다음 후보 모델로 넘어간다.
-            if e.code == 404:
+            # 모델이 없거나 은퇴했으면(no longer available) 다음 후보로 넘어간다.
+            msg = (e.message or "").lower()
+            if e.code == 404 or "no longer available" in msg or "not found" in msg:
                 last_err = e
                 continue
             status = 401 if e.code in (401, 403) else 400
