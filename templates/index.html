@@ -48,6 +48,12 @@
     border: 1px solid transparent; transition: all .15s; white-space: nowrap;
   }
   .topnav .tab:hover { color: var(--text); }
+  .topnav .spacer { flex: 1; }
+  .topnav .shopname {
+    color: var(--accent); font-size: .82rem; font-weight: 700;
+    white-space: nowrap; max-width: 180px; overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .topnav .tab.active {
     background: var(--surface-2); color: var(--accent);
     border-color: var(--border);
@@ -258,6 +264,9 @@
   <span class="brand">Shop Tools</span>
   <a href="/" class="tab active">피팅컷 생성</a>
   <a href="/planner" class="tab">상세페이지 기획</a>
+  <span class="spacer"></span>
+  <span class="shopname">{{ shop }}</span>
+  <a href="/logout" class="tab">로그아웃</a>
 </nav>
 
 <div class="wrap">

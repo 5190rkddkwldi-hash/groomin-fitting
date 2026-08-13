@@ -11,9 +11,13 @@ import base64
 import binascii
 import io
 import json
+import os
 import random
+from datetime import timedelta
 
-from flask import Flask, request, jsonify, render_template
+from flask import (
+    Flask, request, jsonify, render_template, session, redirect, url_for,
+)
 from PIL import Image
 from google import genai
 from google.genai import types
@@ -21,6 +25,12 @@ from google.genai import errors as genai_errors
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 24 * 1024 * 1024  # 참고컷 + 누끼컷 2장
+
+# 공유용 간단 로그인: 추천인 코드가 맞으면 상호명으로 입장한다.
+# 배포 시에는 환경변수로 코드와 세션 키를 바꿀 수 있다.
+app.secret_key = os.environ.get("SECRET_KEY", "groomin-fitting-dev-secret")
+app.permanent_session_lifetime = timedelta(days=90)
+REFERRAL_CODE = os.environ.get("REFERRAL_CODE", "그루민2026")
 
 ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
 QUICK_MAX = 10  # 빠른 생성 모드 최대 장수
@@ -813,10 +823,49 @@ def _extract_json(text):
         return json.loads(text[start:end + 1])
 
 
+@app.before_request
+def require_login():
+    """로그인 게이트: 추천인 코드로 입장한 세션만 통과시킨다."""
+    if request.path.startswith(("/login", "/static", "/favicon.ico")):
+        return None
+    if session.get("shop"):
+        return None
+    if request.path.startswith("/api/"):
+        return jsonify(error="로그인이 필요합니다. 페이지를 새로고침해주세요."), 401
+    return redirect(url_for("login", next=request.path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        code = (request.form.get("code") or "").strip()
+        shop = (request.form.get("shop") or "").strip()
+        if code != REFERRAL_CODE:
+            error = "추천인 코드가 올바르지 않습니다."
+        elif not shop:
+            error = "상호명을 입력해주세요."
+        else:
+            session["shop"] = shop[:40]
+            session.permanent = True
+            nxt = request.args.get("next") or "/"
+            if not nxt.startswith("/") or nxt.startswith("//"):
+                nxt = "/"
+            return redirect(nxt)
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.pop("shop", None)
+    return redirect(url_for("login"))
+
+
 @app.route("/")
 def index():
     return render_template(
         "index.html",
+        shop=session.get("shop"),
         quick_max=QUICK_MAX,
         poseset_max=POSESET_MAX,
         background_groups=BACKGROUND_GROUPS,
@@ -830,6 +879,7 @@ def index():
 def planner():
     return render_template(
         "planner.html",
+        shop=session.get("shop"),
         products=[(key, val["label"]) for key, val in PRODUCTS.items()],
         strategies=[(key, val["label"]) for key, val in PLAN_STRATEGIES.items()],
         tones=[(key, val["label"]) for key, val in PLAN_TONES.items()],

@@ -1,7 +1,14 @@
 services:
   - type: web
-    name: bg-style-webapp
+    name: groomin-fitting
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    # 이미지 생성은 컷당 30초 이상 걸릴 수 있어 타임아웃을 넉넉히,
+    # 화면이 컷을 병렬 요청하므로 스레드도 여러 개 둔다.
+    startCommand: gunicorn app:app --threads 8 --timeout 300
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: REFERRAL_CODE
+        value: "그루민2026"
