@@ -411,6 +411,30 @@ BACKGROUNDS = {
         "photo taken inside the shop. Lived-in and unstaged, not a "
         "decorated set"
     ),
+    # 스몰맨 레퍼런스(2026-08): 흰 벽 + 원목 가구 + 기대둔 액자 + 매거진.
+    # 소품이 무드를 만드는 '꾸며진 편집샵 코너' — 빈 실내와 정반대.
+    "styled_corner": (
+        "inside a warmly styled select-shop or cafe corner — a clean "
+        "white wall with a mid-century wooden sideboard or low shelf in "
+        "warm cherry or walnut tone, a few framed fashion prints "
+        "leaning casually against the wall or shelf, and a couple of "
+        "design magazines or art books stacked nearby. Bright, soft "
+        "daylight fills the space so the mood is clean and cosy, never "
+        "dim or moody. The model stands close to the furniture so the "
+        "corner reads as a curated shop display, and he may hold a "
+        "rolled-up magazine loosely in one hand"
+    ),
+    # 사용자 레퍼런스: 매끈한 콘크리트 카페/갤러리 파사드 + 통유리 + 철제 벤치.
+    "concrete_cafe": (
+        "just outside a modern minimalist concrete cafe or gallery — a "
+        "smooth pale concrete facade with a floor-to-ceiling glass "
+        "window, the interior softly visible through the glass, clean "
+        "pale concrete paving underfoot, and a low black steel bench, "
+        "planter or rope stanchion placed near the entrance. Soft "
+        "diffused daylight with gentle shadows. The model stands close "
+        "to the glass and facade, right by the entrance, as if he just "
+        "stepped outside for a moment"
+    ),
     # 카페/갤러리/샵은 '안'이 아니라 '입구 앞'에서 찍는다 — 사용자 레퍼런스 3컷 공통 문법:
     # 외벽+대형 유리, 유리 반사 너머로 실내가 은은하게, 바닥은 보도블록, 파사드는 사선.
     "storefront": (
@@ -452,7 +476,7 @@ RANDOM_POOL = [
     "studio", "seamless", "concrete_wall", "minimal_wall", "sunlit_room",
     "gallery", "architecture", "stairwell", "street_soft", "rooftop",
     "park_path", "lawn_park", "stair_steps", "showroom", "roadside",
-    "storefront",
+    "storefront", "concrete_cafe", "styled_corner",
 ]
 
 # 랜덤일 때 옷에 어울리는 곳을 고르도록 유도.
@@ -478,6 +502,7 @@ BACKGROUND_GROUPS = [
             ("lawn_park", "공원 잔디밭"),
             ("stair_steps", "야외 계단"),
             ("storefront", "건물 앞 스냅"),
+            ("concrete_cafe", "모던 카페 앞"),
             ("roadside", "거리 스냅"),
             ("showroom", "쇼룸 스냅"),
         ],
@@ -489,6 +514,7 @@ BACKGROUND_GROUPS = [
             ("minimal_wall", "미니멀 벽"),
             ("sunlit_room", "볕 드는 실내"),
             ("gallery", "갤러리"),
+            ("styled_corner", "감성 우드 코너"),
         ],
     ),
     (
@@ -727,6 +753,7 @@ def process():
         # 단, 폰카 스냅 계열 배경은 자기만의 빛/장소 문법이 있어서 얹지 않는다.
         snap_style = background in (
             "lawn_park", "stair_steps", "showroom", "roadside", "storefront",
+            "concrete_cafe", "styled_corner",
         )
         extra["mood_rule"] = (
             TOP_MOOD_RULE if product_type == "top" and not snap_style else ""
