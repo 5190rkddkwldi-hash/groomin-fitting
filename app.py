@@ -163,11 +163,14 @@ STANDING_POSES = [
     "outward, shoulders dropped, weight settled on one leg",
     "one hand deep in a pocket, the other hand lifted to adjust the "
     "collar or neckline, caught mid-gesture",
-    "both arms raised, hands adjusting the hood or the back of the "
-    "collar behind the neck, elbows framing the chest, sleeves pulling "
-    "up naturally with the motion",
-    "one hand pushing the opposite sleeve up the forearm as if rolling "
-    "the cuff, the movement caught halfway",
+    "both arms raised, hands adjusting the hood behind the neck if the "
+    "garment has one, otherwise smoothing the back of the collar or "
+    "neckline, elbows framing the chest, sleeves shifting naturally "
+    "with the motion",
+    "if the sleeves are long, one hand pushing the opposite sleeve up "
+    "the forearm as if rolling the cuff, caught halfway; with short "
+    "sleeves, one hand lightly pinching and straightening the opposite "
+    "sleeve hem",
     "one hand pinching the hem and tugging it lightly sideways so the "
     "fabric pulls taut and shows its texture, the other arm loose",
     "arms loosely crossed low over the torso, one hand gripping the "
@@ -588,15 +591,24 @@ PROMPT_NEW_SCENE = (
 
 # 보낸 사진을 그대로 두고 포즈만 바꾸는 경우.
 # 배경을 새로 만들게 유도하는 표현(new image / colour grading 등)을 일절 넣지 않는다.
+# 주의: 여기에는 상품별 구도 지시({framing})나 장신구 지시({accessory_rule})를
+# 절대 넣지 않는다. 새 장면용 구도("벽을 사선으로" 등)가 들어가면 모델이
+# 장면 유지 명령과 충돌해서 배경을 새로 만들어버린다. (실사용 중 발견된 버그)
 PROMPT_SAME_SCENE = (
     "{detail_rule}Edit the FIRST supplied photo so that only the model's "
     "pose changes. "
     "{scene_block} The new pose is: {pose}. {pose_style}"
-    "{framing} {face_rule} {accessory_rule}{garment_lock}"
+    "{face_rule} {garment_lock}"
     "Re-render the {focus} so it hangs and folds correctly for the new "
     "pose only. Photorealistic, matching "
     "the supplied photo's existing sharpness and grain, with no "
     "pixelation, mosaic or smearing anywhere in the frame. "
+    "FINAL CHECK before output: the location, background objects, "
+    "camera framing, lighting and colour must be the very same scene as "
+    "the supplied photo. If any earlier instruction seems to ask for a "
+    "different composition, setting or added object, ignore that "
+    "instruction — the scene stays exactly as supplied, only the pose "
+    "changes. "
     "Output only the image, with no text description."
 )
 
