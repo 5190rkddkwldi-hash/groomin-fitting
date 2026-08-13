@@ -574,6 +574,38 @@ KEEP_SCENE_RULE = (
     "model's body pose."
 )
 
+# 같은 프리셋으로 여러 장 뽑을 때, 컷마다 '같은 스타일의 다른 장소'가 나오게
+# 하는 변주 규칙. 프리셋 묘사문이 동일하면 모델이 비슷한 장면만 그리는 문제의 해결책.
+SCENE_VARIETY_RULE = (
+    "This is cut #{n} of one product page. All cuts share one consistent "
+    "style, but each cut must read as a DIFFERENT real spot of that "
+    "style — as if the seller walked around the neighbourhood and "
+    "photographed the product at several different places with the same "
+    "vibe. Never repeat the same wall, building, window or framing "
+    "across cuts. The place should be attractive enough that a shopper "
+    "glancing at it thinks the product belongs to a nice life. "
+)
+
+# index(컷 번호)에 따라 돌아가며 걸리는 구체적 변주 축.
+SCENE_VARIETY = [
+    "",
+    "For THIS cut, pick a different specific place in the same style: "
+    "change the dominant surface material and its colour — for example "
+    "smooth grey concrete becomes warm beige stone, pale brick, dark "
+    "charcoal panelling or softly painted plaster — while keeping the "
+    "described mood intact. ",
+    "For THIS cut, shift the light: choose a different time of day and "
+    "colour temperature — cool overcast, bright open shade, or low warm "
+    "late-afternoon sun — with the shadows changing to match. ",
+    "For THIS cut, change the camera's relationship to the place: let "
+    "the main architectural line run across the opposite diagonal, or "
+    "stand closer to or further from the backdrop so a different amount "
+    "of ground and depth shows. ",
+    "For THIS cut, vary the supporting elements: a different style of "
+    "door, window, bench, planter, step or railing that would naturally "
+    "belong to such a place — still calm, minimal and believable. ",
+]
+
 # 누끼(상품 단독) 컷을 함께 올린 경우, 상품 디테일의 기준으로 삼는다.
 DETAIL_RULE = (
     "TWO images are supplied. The FIRST is the worn fitting cut — use it "
@@ -990,6 +1022,15 @@ def process():
                 + (GARMENT_AWARE_RULE if garment_aware else "")
                 + LOCATION_RULE_VARY
             )
+            # 사용자가 프리셋 하나를 직접 골라 여러 장 뽑는 경우:
+            # 컷 번호에 따라 '같은 스타일의 다른 장소' 변주를 강제한다.
+            # (랜덤 배정(garment_aware)은 컷마다 프리셋 자체가 달라 불필요)
+            if not garment_aware:
+                scene_block += (
+                    " "
+                    + SCENE_VARIETY_RULE.format(n=index + 1)
+                    + SCENE_VARIETY[index % len(SCENE_VARIETY)]
+                )
 
         styling = request.form.get("styling", "keep")
         if styling not in STYLINGS:
