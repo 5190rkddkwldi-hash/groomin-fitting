@@ -153,30 +153,39 @@ GARMENT_LOCK_RULE = (
 )
 
 # 레퍼런스 영상의 핵심 포즈 코칭: 꼿꼿이 서지 말고 '엉거주춤하게'.
-# 골반을 살짝 앞으로 내밀고 무릎을 풀면 옷이 자연스럽게 떨어진다.
 # 이미 마음에 든 컷을 기준으로 '같은 자리에서 포즈만' 바꿀 때 쓰는 12종.
-# 앉기/걷기/뒷모습 없이 전부 서 있는 자세이며, 손 위치·체중·각도만 미세하게 다르다.
+# 미스터제이슨 등 4910 인기 쇼핑몰 컷 분석(2026-08) 반영: 다리만 움직이는 정적인
+# 자세가 아니라 '팔과 손이 뭔가 하는 중'인 동작 위주다 — 소매를 걷고, 후드를
+# 만지고, 밑단을 당기고, 주머니에 깊숙이 찌른다. 같은 장면 유지 규칙 때문에
+# 폰/가방 같은 새 소품은 등장시키지 않고, 입고 있는 옷을 만지는 동작만 쓴다.
 STANDING_POSES = [
-    "standing squarely toward the camera, both arms hanging naturally at "
-    "the sides",
-    "standing with one hand slipped into a pocket, the other arm loose at "
-    "the side",
-    "standing with both hands in pockets, elbows relaxed slightly outward",
-    "body turned a few degrees to one side in a soft three-quarter angle, "
-    "arms relaxed",
-    "body turned a few degrees to the opposite side, weight shifted onto "
-    "the back leg",
-    "weight settled onto the left leg, right knee softened and turned "
-    "slightly inward",
-    "weight settled onto the right leg, left foot placed a little forward",
-    "one hand lightly holding the hem or side seam of the garment, "
-    "drawing the eye to its drape",
-    "arms loosely crossed low over the torso, shoulders dropped",
-    "one hand resting on the hip, the other hanging naturally",
-    "one hand lifted to adjust a sleeve or strap, the movement caught "
-    "mid-gesture",
-    "standing almost in profile with the shoulders opened back toward the "
-    "camera, showing the side line of the outfit",
+    "both hands tucked deep into the pockets, elbows pushed slightly "
+    "outward, shoulders dropped, weight settled on one leg",
+    "one hand deep in a pocket, the other hand lifted to adjust the "
+    "collar or neckline, caught mid-gesture",
+    "both arms raised, hands adjusting the hood or the back of the "
+    "collar behind the neck, elbows framing the chest, sleeves pulling "
+    "up naturally with the motion",
+    "one hand pushing the opposite sleeve up the forearm as if rolling "
+    "the cuff, the movement caught halfway",
+    "one hand pinching the hem and tugging it lightly sideways so the "
+    "fabric pulls taut and shows its texture, the other arm loose",
+    "arms loosely crossed low over the torso, one hand gripping the "
+    "opposite sleeve fabric, body angled a few degrees off centre",
+    "one hand resting on the hip with the elbow out, the other hand "
+    "brushing the side seam of the garment flat",
+    "both hands lightly holding the bottom hem, straightening the "
+    "garment downward, chin-side shoulder relaxed",
+    "one arm bent with the hand pressed flat against the chest smoothing "
+    "the fabric, the other hand slipped into a pocket",
+    "hands clasped loosely behind the back, chest open, torso twisted a "
+    "few degrees so the garment wraps with the turn",
+    "one arm swinging slightly across the body as if caught mid-motion, "
+    "the sleeve moving with it, the other hand in a pocket, weight "
+    "shifting between legs",
+    "shoulders opened almost in profile toward the camera, the near hand "
+    "tucked in a pocket, the far arm reaching across to adjust the cuff "
+    "of the opposite sleeve",
 ]
 
 # 모델 표준 — 180cm / 79kg, 옷 입었을 때 체격이 살아 보이도록.
