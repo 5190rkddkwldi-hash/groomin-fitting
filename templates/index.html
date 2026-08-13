@@ -595,8 +595,17 @@ async function runBatch(count, makeFd, prefix, offerPoseSet) {
     slots[i].loading();
     try {
       const resp = await fetch("/api/process", { method: "POST", body: makeFd(i) });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || "알 수 없는 오류가 발생했습니다.");
+      let data = null;
+      try { data = await resp.json(); } catch (e) { /* JSON이 아닌 오류 페이지 */ }
+      if (!resp.ok) {
+        const fallback = resp.status === 413
+          ? "이미지 용량이 너무 큽니다. 페이지를 새로고침한 뒤 다시 시도해주세요."
+          : `서버 오류가 발생했습니다 (${resp.status})`;
+        throw new Error((data && data.error) || fallback);
+      }
+      if (!data || !data.results || !data.results[0]) {
+        throw new Error("이미지가 생성되지 않았습니다. 다시 시도해주세요.");
+      }
       const dataUrl = data.results[0].image;
       slots[i].fill(dataUrl);
       states[i] = "ok";
@@ -670,8 +679,26 @@ form.addEventListener("submit", (e) => {
   }, "fitting_cut", !poseset);
 });
 
+// 큰 이미지를 서버 업로드 한도 안으로 줄인다. 생성 품질에는 1536px이면 충분.
+function shrinkDataUrl(dataUrl, maxSide = 1536) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      if (scale >= 1 && dataUrl.length < 3_000_000) { resolve(dataUrl); return; }
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", 0.92));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 // 고른 컷을 레퍼런스로 넘겨 배경·모델·의상은 그대로, 서 있는 포즈만 바꾼다.
-function makePoseSet(dataUrl) {
+async function makePoseSet(dataUrl) {
   if (running) return;
   const apiKey = document.getElementById("apiKey").value.trim();
   if (!apiKey) { setStatus("API 키를 먼저 입력해주세요.", true); return; }
@@ -680,6 +707,7 @@ function makePoseSet(dataUrl) {
   const accessories = document.getElementById("accessories").value;
   const detailFile = document.getElementById("detailImage").files[0];
 
+  dataUrl = await shrinkDataUrl(dataUrl);
   runBatch(POSESET_MAX, (i) => {
     const fd = new FormData();
     fd.append("api_key", apiKey);

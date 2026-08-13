@@ -862,6 +862,12 @@ def _extract_json(text):
         return json.loads(text[start:end + 1])
 
 
+@app.errorhandler(413)
+def request_too_large(e):
+    # 기본 413은 HTML이라 화면 JS가 못 읽는다 — JSON으로 통일
+    return jsonify(error="이미지 용량이 너무 큽니다. 더 작은 사진으로 시도해주세요."), 413
+
+
 @app.before_request
 def require_login():
     """로그인 게이트: 추천인 코드로 입장한 세션만 통과시킨다."""
