@@ -354,12 +354,6 @@ BACKGROUNDS = {
         "top light with only the faintest shadow. Calm, spacious and "
         "deliberately understated"
     ),
-    "quiet_cafe": (
-        "in a refined quiet cafe interior with warm wood, stone and linen "
-        "textures, a plaster wall, and soft light falling from a window "
-        "just out of frame. No signage, no lettering, no clutter — just "
-        "one or two calm furniture edges giving the space depth"
-    ),
     "architecture": (
         "beside clean modern architecture — a smooth concrete column, a "
         "run of stone steps, a deep doorway reveal or a simple façade. "
@@ -436,6 +430,20 @@ BACKGROUNDS = {
         "mirror's edge or frame may enter the shot, with a plain "
         "lived-in interior behind"
     ),
+    # 카페/갤러리/샵은 '안'이 아니라 '입구 앞'에서 찍는다 — 사용자 레퍼런스 3컷 공통 문법:
+    # 외벽+대형 유리, 유리 반사 너머로 실내가 은은하게, 바닥은 보도블록, 파사드는 사선.
+    "storefront": (
+        "outside on the street, right in front of a building's "
+        "ground-level facade — a cafe, gallery or small shop — with a "
+        "large glass window or glass door behind the model, the "
+        "interior only faintly readable through soft reflections in the "
+        "glass. Around the glass, a facade of raw concrete, stone or "
+        "pale plaster; underfoot, a block-paved or smooth concrete "
+        "sidewalk, perhaps a low entrance step or doorway reveal. Shot "
+        "from a slight angle so the facade edges and window frames run "
+        "diagonally through the frame, in open natural daylight — the "
+        "kind of quick sharp snap taken just outside the door"
+    ),
     "roadside": (
         "on an ordinary Korean roadside sidewalk on a bright day — grey "
         "block paving underfoot, a painted yellow road line or crosswalk "
@@ -455,9 +463,10 @@ BACKGROUNDS = {
 # '랜덤'일 때 실제로 돌려 쓸 후보들 (studio/auto 자신은 제외).
 RANDOM_POOL = [
     "seamless", "concrete_wall", "minimal_wall", "sunlit_room", "gallery",
-    "quiet_cafe", "architecture", "stairwell", "park_path", "forest",
+    "architecture", "stairwell", "park_path", "forest",
     "field", "seaside", "rooftop", "street_soft", "golden_hour", "studio",
     "lawn_park", "stair_steps", "showroom", "mirror", "roadside",
+    "storefront",
 ]
 
 # 랜덤일 때 옷에 어울리는 곳을 고르도록 유도.
@@ -482,6 +491,7 @@ BACKGROUND_GROUPS = [
         [
             ("lawn_park", "공원 잔디밭"),
             ("stair_steps", "야외 계단"),
+            ("storefront", "건물 앞 스냅"),
             ("roadside", "거리 스냅"),
             ("showroom", "쇼룸 스냅"),
             ("mirror", "거울샷"),
@@ -494,7 +504,6 @@ BACKGROUND_GROUPS = [
             ("minimal_wall", "미니멀 벽"),
             ("sunlit_room", "볕 드는 실내"),
             ("gallery", "갤러리"),
-            ("quiet_cafe", "조용한 카페"),
         ],
     ),
     (
@@ -734,6 +743,7 @@ def process():
         # 단, 폰카 스냅 계열 배경은 자기만의 빛/장소 문법이 있어서 얹지 않는다.
         snap_style = background in (
             "lawn_park", "stair_steps", "showroom", "mirror", "roadside",
+            "storefront",
         )
         extra["mood_rule"] = (
             TOP_MOOD_RULE if product_type == "top" and not snap_style else ""
