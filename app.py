@@ -25,6 +25,10 @@ from google.genai import errors as genai_errors
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 24 * 1024 * 1024  # 참고컷 + 누끼컷 2장
+# 12포즈 모드는 고른 컷을 파일이 아니라 data URL 텍스트 필드(reference)로 보낸다.
+# Werkzeug 3.1부터 일반 폼 필드 합계가 기본 500KB로 제한돼 그 요청이 413으로
+# 잘리므로, 텍스트 필드 한도도 전체 업로드 한도와 같게 올린다.
+app.config["MAX_FORM_MEMORY_SIZE"] = 24 * 1024 * 1024
 
 # 공유용 간단 로그인: 추천인 코드가 맞으면 상호명으로 입장한다.
 # 배포 시에는 환경변수로 코드와 세션 키를 바꿀 수 있다.
@@ -1205,7 +1209,8 @@ def process():
                         response_modalities=[types.Modality.TEXT, types.Modality.IMAGE],
                     ),
                 )
-                for part in response.parts:
+                # 안전필터 등으로 응답이 아예 비면 parts가 None이라 그대로 돌면 500이 난다
+                for part in response.parts or []:
                     if part.inline_data:
                         b64 = base64.b64encode(part.inline_data.data).decode()
                         image_data_url = f"data:image/png;base64,{b64}"
