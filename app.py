@@ -402,15 +402,15 @@ BACKGROUNDS = {
         "the backdrop. Nothing else in the frame — the garment carries the "
         "whole image, the way premium Korean brand product pages shoot it"
     ),
-    # 주의: 예전의 "form-tie holes(거푸집 타이 구멍)" 문구는 모델이 벽면에
-    # 규칙적인 점 무늬를 억지로 그려내는 부작용이 있어 뺐다.
+    # 주의: "raw/poured concrete(노출 콘크리트)"라는 단어 자체가 모델에게
+    # 거푸집 구멍(규칙적 O 무늬)을 그리게 만든다 — 금지 문구보다 표현 교체가 답.
     "concrete_wall": (
-        "against a raw poured-concrete wall — a mostly plain, smooth "
-        "surface with only subtle irregular staining and fine natural "
-        "grain, the wall running diagonally across the frame. The wall "
-        "must NOT have any repeating pattern of holes, dots or marks. "
-        "Hard afternoon sunlight rakes across it, leaving a crisp shadow "
-        "edge and giving the texture real depth"
+        "against a smooth, evenly finished concrete wall — one clean "
+        "continuous surface with soft tonal variation and faint "
+        "irregular weathering, completely free of form-tie holes or dot "
+        "marks, the wall running diagonally across the frame. Hard "
+        "afternoon sunlight rakes across it, leaving a crisp shadow "
+        "edge and giving the surface real depth"
     ),
     "minimal_wall": (
         "against a smooth off-white, warm beige or pale grey plaster wall "
@@ -422,26 +422,37 @@ BACKGROUNDS = {
         "in a quiet minimal interior where late-afternoon sun comes "
         "through a tall window and lays warm geometric light patches "
         "across a pale wall and a wooden or polished concrete floor. A "
-        "sheer curtain softens one edge of the light; almost nothing else "
-        "is in the frame"
+        "sheer curtain softens one edge of the light, and a single "
+        "tasteful piece — a lounge chair, a floor lamp or a large leafy "
+        "plant — sits at the edge of the frame so the room feels lived "
+        "in"
     ),
+    # 주의: "empty white void 금지" 같은 부정 문구를 넣으면 모델이 흰 벽
+    # 자체를 피해 빈티지 폐건물풍으로 튄다 — 흰 벽을 긍정문으로 고정할 것.
     "gallery": (
-        "in a bright gallery-like space — tall white walls, a pale "
-        "seamless floor, generous empty air around the body, and soft even "
-        "top light with only the faintest shadow. Calm, spacious and "
-        "deliberately understated"
+        "in a bright modern gallery — tall, freshly painted clean white "
+        "walls with one or two large framed artworks hung sparely, a "
+        "long low wooden or stone bench, a pale seamless floor and soft "
+        "even top light. Calm, spacious and well kept, like a real "
+        "exhibition room between shows — the artworks and bench give "
+        "the space life"
     ),
     "architecture": (
-        "beside clean modern architecture — a smooth concrete column, a "
-        "run of stone steps, a deep doorway reveal or a simple façade. "
-        "Strong architectural lines cut diagonally through the frame and "
-        "soft daylight models the surfaces without harshness"
+        "beside clean modern architecture — a smooth seamless concrete "
+        "column or wall with an even untextured finish, a run of stone "
+        "steps, a deep doorway reveal or a simple façade. Strong "
+        "architectural lines cut diagonally through the frame and soft "
+        "daylight models the surfaces without harshness; every concrete "
+        "surface stays perfectly smooth, with no pattern of round holes "
+        "or dots"
     ),
     "stairwell": (
-        "on a quiet stairwell landing — a metal handrail, a painted or "
-        "concrete wall, and the diagonal line of the stair edge running "
-        "through the frame. Daylight falls from above, giving soft "
-        "top-down modelling and a calm enclosed mood"
+        "on a quiet stairwell landing — a metal handrail, a smoothly "
+        "painted wall, the diagonal line of the stair edge running "
+        "through the frame, and a tall window or glass-block wall "
+        "letting daylight fall from above. A small potted plant or a "
+        "leaning framed print at the edge of the frame keeps the corner "
+        "from feeling abandoned; calm enclosed mood"
     ),
     "park_path": (
         "on a quiet tree-lined path where dappled sunlight falls through "
@@ -459,9 +470,12 @@ BACKGROUNDS = {
         "diffused overcast daylight"
     ),
     "rooftop": (
-        "on a clean open rooftop with an unobstructed pale sky, a low "
-        "parapet wall, soft daylight and almost nothing built around. "
-        "Open, airy and quiet"
+        "on a styled rooftop terrace — a low parapet wall, warm wooden "
+        "deck tiles or pale pavers underfoot, a couple of large planters "
+        "with green shrubs and a simple bench or cafe chair to one side, "
+        "city rooftops softly visible in the distance under an open sky. "
+        "Bright, airy and pleasant, like a rooftop lounge people "
+        "actually use"
     ),
     "street_soft": (
         "on a calm, tidy city street with restrained modern storefronts, "
@@ -481,7 +495,8 @@ BACKGROUNDS = {
     # 주의: 예전의 "yellow tactile paving(점자블록)" 문구는 모델이 노란
     # 점 패턴을 화면 곳곳에 규칙적으로 찍어내는 부작용이 있어 뺐다.
     "stair_steps": (
-        "on wide outdoor concrete stairs beside a raw concrete wall — "
+        "on wide outdoor concrete stairs beside a smooth finished "
+        "concrete wall — "
         "metal handrails, strong midday sun cutting hard diagonal shadows "
         "across the steps. The concrete surfaces stay plain, with only "
         "irregular natural stains and wear, never any repeating pattern "
@@ -629,9 +644,16 @@ BACKGROUND_RULE_TEMPLATE = (
     "Background style: a calm, simple, believable location, shot "
     "{setting}. The setting should feel natural and effortless — never "
     "busy, cluttered or loud. Avoid neon, large signage, heavy text and "
-    "crowds. Never cover any wall, floor or pavement with a repeating "
-    "pattern of identical dots, holes, studs or specks — real surfaces "
-    "are mostly plain with only irregular natural wear. The background "
+    "crowds. Concrete and stone surfaces read as smooth continuous "
+    "material — never stamp a repeating grid of identical circular "
+    "holes, dots or studs across any wall, floor or facade. At the same "
+    "time the place must feel styled and inviting, never bare or "
+    "abandoned: unless the setting is a pure seamless studio backdrop, "
+    "include one or two believable supporting elements that suit the "
+    "described place — a window with natural light, a plant, a framed "
+    "print, a bench, a piece of furniture, a doorway — so the spot "
+    "reads as a curated, livable corner someone cares about, not an "
+    "empty void. The background "
     "must stay secondary so the product remains "
     "the hero, while still making the item look desirable and worth "
     "buying."
