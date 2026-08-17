@@ -421,11 +421,9 @@ BACKGROUNDS = {
     "sunlit_room": (
         "in a quiet minimal interior where late-afternoon sun comes "
         "through a tall window and lays warm geometric light patches "
-        "across a pale wall and a wooden or polished concrete floor. A "
-        "sheer curtain softens one edge of the light, and a single "
-        "tasteful piece — a lounge chair, a floor lamp or a large leafy "
-        "plant — sits at the edge of the frame so the room feels lived "
-        "in"
+        "across a pale warm-toned wall and a wooden floor. A sheer "
+        "curtain softens one edge of the light — the warmth of the "
+        "light and the wood is what fills the frame"
     ),
     # 주의: "empty white void 금지" 같은 부정 문구를 넣으면 모델이 흰 벽
     # 자체를 피해 빈티지 폐건물풍으로 튄다 — 흰 벽을 긍정문으로 고정할 것.
@@ -450,9 +448,8 @@ BACKGROUNDS = {
         "on a quiet stairwell landing — a metal handrail, a smoothly "
         "painted wall, the diagonal line of the stair edge running "
         "through the frame, and a tall window or glass-block wall "
-        "letting daylight fall from above. A small potted plant or a "
-        "leaning framed print at the edge of the frame keeps the corner "
-        "from feeling abandoned; calm enclosed mood"
+        "letting daylight pour in from the side so the corner feels "
+        "bright, warm and calm"
     ),
     "park_path": (
         "on a quiet tree-lined path where dappled sunlight falls through "
@@ -470,12 +467,10 @@ BACKGROUNDS = {
         "diffused overcast daylight"
     ),
     "rooftop": (
-        "on a styled rooftop terrace — a low parapet wall, warm wooden "
-        "deck tiles or pale pavers underfoot, a couple of large planters "
-        "with green shrubs and a simple bench or cafe chair to one side, "
-        "city rooftops softly visible in the distance under an open sky. "
-        "Bright, airy and pleasant, like a rooftop lounge people "
-        "actually use"
+        "on a pleasant rooftop terrace — a low parapet wall, warm wooden "
+        "deck tiles or pale pavers underfoot, a simple bench along one "
+        "side, neighbouring rooftops softly visible in the distance "
+        "under an open sky. Bright, airy and lived-in"
     ),
     "street_soft": (
         "on a calm, tidy city street with restrained modern storefronts, "
@@ -523,6 +518,25 @@ BACKGROUNDS = {
         "dim or moody. The model stands close to the furniture so the "
         "corner reads as a curated shop display, and he may hold a "
         "rolled-up magazine loosely in one hand"
+    ),
+    # 미스터제이슨류 폰카 스냅: 한적한 주택가 골목 — 차도·차량 없이 담장과 대문만.
+    "alley_snap": (
+        "in a quiet Korean residential alley on a bright day — a low "
+        "wall of warm brick or smoothly painted blocks, a simple metal "
+        "or wooden gate, maybe a few shallow entrance steps, clean "
+        "block paving underfoot and no cars or road markings in sight. "
+        "Warm sunlight falls along the wall and leaves crisp shadows — "
+        "the kind of calm back lane between houses where a seller "
+        "quickly shoots a fitting cut"
+    ),
+    # 카페는 '안'이 아니라 입구/테라스에서 찍는 게 이 장르의 문법 — 테라스 좌석 버전.
+    "cafe_terrace": (
+        "on the outdoor terrace of a minimal cafe — one or two simple "
+        "wooden or black metal chairs and a small table set against the "
+        "cafe's glass front, warm daylight, clean pale paving, the "
+        "interior softly visible through the window behind. The model "
+        "stands beside the chairs or leans lightly on the table edge, "
+        "as natural as a quick snap taken while grabbing a coffee"
     ),
     # 사용자 레퍼런스: 매끈한 콘크리트 카페/갤러리 파사드 + 통유리 + 철제 벤치.
     "concrete_cafe": (
@@ -579,6 +593,7 @@ RANDOM_POOL = [
     "gallery", "architecture", "stairwell", "street_soft", "rooftop",
     "park_path", "lawn_park", "stair_steps", "showroom",
     "storefront", "concrete_cafe", "styled_corner",
+    "alley_snap", "cafe_terrace",
 ]
 
 # 랜덤일 때 옷에 어울리는 곳을 고르도록 유도.
@@ -605,6 +620,8 @@ BACKGROUND_GROUPS = [
             ("stair_steps", "야외 계단"),
             ("storefront", "건물 앞 스냅"),
             ("concrete_cafe", "모던 카페 앞"),
+            ("cafe_terrace", "카페 테라스"),
+            ("alley_snap", "골목 스냅"),
             ("roadside", "거리 스냅"),
             ("showroom", "쇼룸 스냅"),
         ],
@@ -646,14 +663,16 @@ BACKGROUND_RULE_TEMPLATE = (
     "busy, cluttered or loud. Avoid neon, large signage, heavy text and "
     "crowds. Concrete and stone surfaces read as smooth continuous "
     "material — never stamp a repeating grid of identical circular "
-    "holes, dots or studs across any wall, floor or facade. At the same "
-    "time the place must feel styled and inviting, never bare or "
-    "abandoned: unless the setting is a pure seamless studio backdrop, "
-    "include one or two believable supporting elements that suit the "
-    "described place — a window with natural light, a plant, a framed "
-    "print, a bench, a piece of furniture, a doorway — so the spot "
-    "reads as a curated, livable corner someone cares about, not an "
-    "empty void. The background "
+    "holes, dots or studs across any wall, floor or facade. The place "
+    "must feel warm and inviting, the way a Korean select shop stages "
+    "its lookbook: warm material tones, generous natural light, and — "
+    "only where such things naturally live — furnishings that form one "
+    "coherent, integrated corner of the place, like furniture set "
+    "against a wall with prints and books arranged on it. Never fill "
+    "space by dropping a single random object such as a lone potted "
+    "plant or stool beside the model; if the spot is naturally "
+    "minimal, let warm light and tone carry the frame instead. The "
+    "background "
     "must stay secondary so the product remains "
     "the hero, while still making the item look desirable and worth "
     "buying."
