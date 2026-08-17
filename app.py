@@ -39,7 +39,58 @@ REFERRAL_CODE = os.environ.get("REFERRAL_CODE", "grooming2026")
 ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
 QUICK_MAX = 10  # 빠른 생성 모드 최대 장수
 POSESET_MAX = 12  # 포즈 모음 모드 최대 장수 (최소 1)
-MODEL = "gemini-3.1-flash-image"
+# 이미지 모델 후보. 첫 후보가 무응답/혼잡이면 다음 후보로 자동 폴백한다.
+# (플래너 텍스트 모델과 같은 패턴. 2026-08-17 실제 발생: 구글 혼잡으로
+# 3.1-flash-image는 2분+ 무응답, 3-pro-image는 503 'high demand'.)
+# 사용자 방침: 화질이 우선 — lite 같은 하위 모델로 몰래 낮추지 않는다.
+# 전부 실패하면 '혼잡하니 잠시 후 재시도' 오류를 그대로 보여준다.
+IMAGE_MODELS = [
+    "gemini-3.1-flash-image",
+    "gemini-3.1-flash-image-preview",
+    "gemini-3-pro-image",
+]
+# 이미지 생성 1회 최대 대기(밀리초). 정상 생성은 보통 10~60초 안에 끝난다.
+IMAGE_TIMEOUT_MS = 75_000
+# 한 번 성공한 모델을 기억해, 죽은 모델의 타임아웃을 컷마다 다시 기다리지 않는다.
+_image_model_pick = {"name": None}
+
+
+class ImageModelUnavailable(RuntimeError):
+    """모든 이미지 모델 후보가 실패했을 때."""
+
+
+def _generate_image_with_fallback(client, prompt, images):
+    cached = _image_model_pick["name"]
+    candidates = ([cached] if cached else []) + [
+        m for m in IMAGE_MODELS if m != cached
+    ]
+    last_err = None
+    for model_name in candidates:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[prompt, *images],
+                config=types.GenerateContentConfig(
+                    response_modalities=[types.Modality.TEXT, types.Modality.IMAGE],
+                ),
+            )
+        except genai_errors.ClientError as e:
+            if e.code in (401, 403):
+                raise  # 키 문제는 폴백해도 소용없다
+            last_err = e
+            continue
+        except genai_errors.APIError as e:
+            last_err = e
+            continue
+        except Exception as e:  # 타임아웃 등 전송 계층 오류
+            last_err = e
+            continue
+        _image_model_pick["name"] = model_name
+        return response
+    raise ImageModelUnavailable(
+        "Google 이미지 생성 서버가 혼잡해 응답하지 않습니다. "
+        "일시적인 현상이니 잠시 후 다시 시도해주세요."
+    )
 
 # 쇼핑몰 착용컷의 정석 구도 12종. 앞의 4개는 어떤 상품에나 무난해서
 # 빠른 생성 모드에서 우선 사용된다.
@@ -162,8 +213,20 @@ GARMENT_LOCK_RULE = (
     "print, logo, lettering or graphic — including its exact artwork, "
     "size and position on the garment. Do not redesign it, do not "
     "restyle it, do not swap it for another product, and do not add or "
-    "remove any detail. Only the way it folds and drapes may change, "
-    "because the pose changed. "
+    "remove any detail. Preserve the exact FIT as worn in the reference "
+    "photo — the same degree of looseness or slimness on the body, the "
+    "same length on the torso or leg. Only the way it folds and drapes "
+    "may change, because the pose changed. "
+)
+
+# 코디 스타일 '그대로'일 때: 판매 상품 외 나머지 착장도 참조 사진과 같게 잠근다.
+# (이 규칙이 없으면 모델이 신발·바지 등을 마음대로 지어내는 문제가 있었다.)
+OUTFIT_KEEP_RULE = (
+    "OUTFIT LOCK — the rest of the outfit must also stay faithful to the "
+    "reference photo: every other visible garment, footwear and accessory "
+    "keeps the same type, colour and overall look as actually worn in the "
+    "reference photo. Do not invent, swap or restyle any item of the "
+    "outfit. "
 )
 
 # 레퍼런스 영상의 핵심 포즈 코칭: 꼿꼿이 서지 말고 '엉거주춤하게'.
@@ -339,11 +402,15 @@ BACKGROUNDS = {
         "the backdrop. Nothing else in the frame — the garment carries the "
         "whole image, the way premium Korean brand product pages shoot it"
     ),
+    # 주의: 예전의 "form-tie holes(거푸집 타이 구멍)" 문구는 모델이 벽면에
+    # 규칙적인 점 무늬를 억지로 그려내는 부작용이 있어 뺐다.
     "concrete_wall": (
-        "against a raw poured-concrete wall with faint form-tie holes, "
-        "subtle staining and fine surface grain, the wall running "
-        "diagonally across the frame. Hard afternoon sunlight rakes across "
-        "it, leaving a crisp shadow edge and giving the texture real depth"
+        "against a raw poured-concrete wall — a mostly plain, smooth "
+        "surface with only subtle irregular staining and fine natural "
+        "grain, the wall running diagonally across the frame. The wall "
+        "must NOT have any repeating pattern of holes, dots or marks. "
+        "Hard afternoon sunlight rakes across it, leaving a crisp shadow "
+        "edge and giving the texture real depth"
     ),
     "minimal_wall": (
         "against a smooth off-white, warm beige or pale grey plaster wall "
@@ -411,12 +478,15 @@ BACKGROUNDS = {
         "camera sits at a slightly low angle so the body stands against "
         "the sky and treeline"
     ),
+    # 주의: 예전의 "yellow tactile paving(점자블록)" 문구는 모델이 노란
+    # 점 패턴을 화면 곳곳에 규칙적으로 찍어내는 부작용이 있어 뺐다.
     "stair_steps": (
         "on wide outdoor concrete stairs beside a raw concrete wall — "
-        "metal handrails, yellow tactile paving blocks at the edge of "
-        "the frame, strong midday sun cutting hard diagonal shadows "
-        "across the steps. Rough, real street architecture with visible "
-        "stains and wear, exactly like a back street of a Korean city"
+        "metal handrails, strong midday sun cutting hard diagonal shadows "
+        "across the steps. The concrete surfaces stay plain, with only "
+        "irregular natural stains and wear, never any repeating pattern "
+        "of dots or studs. Rough, real street architecture, exactly like "
+        "a back street of a Korean city"
     ),
     "showroom": (
         "inside a real clothing-shop showroom corner — plain white walls "
@@ -488,9 +558,11 @@ BACKGROUNDS = {
 RANDOM_POOL = [
     # 랜덤은 '한 브랜드가 찍은 세트'처럼 보여야 하므로 무드가 검증된 것만 넣는다.
     # 들판/바닷가/골든아워는 원할 때 직접 선택하는 용도로만 남긴다.
+    # roadside(차도·주차 차량이 보이는 거리 스냅)는 쇼핑몰 피팅컷 무드와
+    # 어긋난다는 피드백(2026-08-17)으로 랜덤에서 제외 — 직접 선택은 가능.
     "studio", "seamless", "concrete_wall", "minimal_wall", "sunlit_room",
     "gallery", "architecture", "stairwell", "street_soft", "rooftop",
-    "park_path", "lawn_park", "stair_steps", "showroom", "roadside",
+    "park_path", "lawn_park", "stair_steps", "showroom",
     "storefront", "concrete_cafe", "styled_corner",
 ]
 
@@ -557,7 +629,10 @@ BACKGROUND_RULE_TEMPLATE = (
     "Background style: a calm, simple, believable location, shot "
     "{setting}. The setting should feel natural and effortless — never "
     "busy, cluttered or loud. Avoid neon, large signage, heavy text and "
-    "crowds. The background must stay secondary so the product remains "
+    "crowds. Never cover any wall, floor or pavement with a repeating "
+    "pattern of identical dots, holes, studs or specks — real surfaces "
+    "are mostly plain with only irregular natural wear. The background "
+    "must stay secondary so the product remains "
     "the hero, while still making the item look desirable and worth "
     "buying."
 )
@@ -620,14 +695,22 @@ SCENE_VARIETY = [
     "belong to such a place — still calm, minimal and believable. ",
 ]
 
-# 누끼(상품 단독) 컷을 함께 올린 경우, 상품 디테일의 기준으로 삼는다.
+# 누끼(상품 단독) 컷을 함께 올린 경우, '표면 디테일'의 기준으로만 삼는다.
+# 주의: 예전 문구("두 사진이 다르면 누끼컷을 따르라")는 모델이 핏·실루엣·
+# 나머지 착장까지 누끼컷 기준으로 새로 그려버리는 부작용이 있었다.
 DETAIL_RULE = (
-    "TWO images are supplied. The FIRST is the worn fitting cut — use it "
-    "for how the garment sits on the body. The SECOND is a clean cut-out "
-    "product shot of the exact item being sold — treat it as the "
-    "authoritative reference for the item's true colour, fabric texture, "
-    "print, graphics, trims, stitching and construction. Where the two "
-    "disagree, follow the cut-out shot for the item's appearance. "
+    "TWO images are supplied. The FIRST is the worn fitting cut — it is "
+    "the MASTER reference for the whole image: the complete outfit, and "
+    "how the garment actually FITS the body — its silhouette, looseness, "
+    "length and proportions on the body all follow the FIRST photo "
+    "exactly. The SECOND is a clean cut-out product shot of the exact "
+    "item being sold — use it ONLY to correct fine SURFACE details of "
+    "that one item: its true colour and shade, fabric texture, print, "
+    "graphics, lettering, trims and stitching. The cut-out must NEVER "
+    "override the garment's fit, silhouette, length or how it drapes on "
+    "the body, and must never change, restyle or replace any OTHER "
+    "garment, footwear or accessory in the outfit — everything except "
+    "those surface details stays exactly as in the FIRST photo. "
 )
 
 ACCESSORY_RULE_TEMPLATE = (
@@ -1124,13 +1207,16 @@ def process():
             )
             # 사용자가 프리셋 하나를 직접 골라 여러 장 뽑는 경우:
             # 컷 번호에 따라 '같은 스타일의 다른 장소' 변주를 강제한다.
-            # (랜덤 배정(garment_aware)은 컷마다 프리셋 자체가 달라 불필요)
             if not garment_aware:
                 scene_block += (
                     " "
                     + SCENE_VARIETY_RULE.format(n=index + 1)
                     + SCENE_VARIETY[index % len(SCENE_VARIETY)]
                 )
+            else:
+                # 랜덤 배정은 컷마다 프리셋이 다르지만, 같은 프리셋이 매번
+                # 거의 똑같은 장면으로 렌더되는 문제가 있어 변주 축만 얹는다.
+                scene_block += " " + SCENE_VARIETY[index % len(SCENE_VARIETY)]
 
         styling = request.form.get("styling", "keep")
         if styling not in STYLINGS:
@@ -1139,7 +1225,7 @@ def process():
         extra["styling_rule"] = (
             STYLING_RULE_TEMPLATE.format(focus=product["focus"], desc=desc)
             if desc
-            else ""
+            else OUTFIT_KEEP_RULE
         )
         extra["model_rule"] = MODEL_RULE
         extra["realism_rule"] = REALISM_RULE
@@ -1178,7 +1264,10 @@ def process():
     except (OSError, ValueError):
         return jsonify(error="이미지 파일을 읽지 못했습니다. 다른 파일로 시도해주세요."), 400
 
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(timeout=IMAGE_TIMEOUT_MS),
+    )
 
     results = []
     warning = None
@@ -1202,12 +1291,8 @@ def process():
             # 그 경우 한 번만 즉시 재시도하면 대부분 성공한다.
             image_data_url = None
             for attempt in range(2):
-                response = client.models.generate_content(
-                    model=MODEL,
-                    contents=[prompt, *contents_images],
-                    config=types.GenerateContentConfig(
-                        response_modalities=[types.Modality.TEXT, types.Modality.IMAGE],
-                    ),
+                response = _generate_image_with_fallback(
+                    client, prompt, contents_images
                 )
                 # 안전필터 등으로 응답이 아예 비면 parts가 None이라 그대로 돌면 500이 난다
                 for part in response.parts or []:
@@ -1218,6 +1303,10 @@ def process():
                     break
             if image_data_url:
                 results.append({"image": image_data_url})
+    except ImageModelUnavailable as e:
+        if not results:
+            return jsonify(error=str(e)), 502
+        warning = str(e)
     except genai_errors.ClientError as e:
         # 이미 만들어진 컷이 있다면 버리지 않고 경고와 함께 돌려준다.
         if not results:

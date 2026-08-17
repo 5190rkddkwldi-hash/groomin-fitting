@@ -127,6 +127,14 @@
   .drop-text { font-size: 0.88rem; color: var(--muted); }
   .drop.has-file { border-style: solid; border-color: var(--accent-dim); }
   .drop.has-file .drop-text { color: var(--accent); font-weight: 600; }
+  .drop-clear {
+    position: absolute; top: 8px; right: 8px; z-index: 2;
+    display: none; padding: 4px 10px; font-size: 0.78rem;
+    background: var(--surface); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+  }
+  .drop-clear:hover { color: #ff7b7b; border-color: #ff7b7b; }
+  .drop.has-file .drop-clear { display: block; }
   #preview, #preview2 {
     max-height: 150px; border-radius: 10px; margin-top: 12px; display: none;
   }
@@ -296,6 +304,7 @@
           <input type="file" id="image" name="image" accept="image/png,image/jpeg,image/webp" required>
           <span class="drop-icon">📷</span>
           <span class="drop-text" id="dropText">클릭하거나 사진을 여기로 끌어다 놓으세요</span>
+          <button type="button" class="drop-clear" id="clearMain">✕ 제거</button>
         </div>
         <img id="preview" alt="미리보기">
       </div>
@@ -306,6 +315,7 @@
           <input type="file" id="detailImage" name="detail_image" accept="image/png,image/jpeg,image/webp">
           <span class="drop-icon">🧷</span>
           <span class="drop-text" id="dropText2">상품만 있는 누끼컷을 올리면 색·프린트·디테일이 더 정확해집니다</span>
+          <button type="button" class="drop-clear" id="clearDetail">✕ 제거</button>
         </div>
         <img id="preview2" alt="누끼컷 미리보기">
       </div>
@@ -394,7 +404,8 @@ const dropText = document.getElementById("dropText");
 const preview = document.getElementById("preview");
 
 // 업로드 칸 하나를 미리보기·드래그앤드롭까지 묶어서 초기화
-function wireDrop(dropEl, inputEl, textEl, previewEl, defaultText) {
+function wireDrop(dropEl, inputEl, textEl, previewEl, clearEl) {
+  const defaultText = textEl.textContent;
   function show(file) {
     if (!file) return;
     dropEl.classList.add("has-file");
@@ -419,9 +430,17 @@ function wireDrop(dropEl, inputEl, textEl, previewEl, defaultText) {
     const file = e.dataTransfer.files[0];
     if (file) { inputEl.files = e.dataTransfer.files; show(file); }
   });
+  if (clearEl) clearEl.addEventListener("click", (e) => {
+    e.preventDefault(); e.stopPropagation();
+    inputEl.value = "";
+    dropEl.classList.remove("has-file");
+    textEl.textContent = defaultText;
+    previewEl.src = "";
+    previewEl.style.display = "none";
+  });
 }
 
-wireDrop(drop, fileInput, dropText, preview);
+wireDrop(drop, fileInput, dropText, preview, document.getElementById("clearMain"));
 
 // ---- API 키 기억하기 (브라우저 localStorage — 기획 페이지와 공유) ----
 const apiKeyInput = document.getElementById("apiKey");
