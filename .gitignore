@@ -2,3 +2,10 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+.env
+.pytest_cache/
+.coverage
+htmlcov/
+# 로컬에서 만든 결과물
+outputs/
+*.log

@@ -1,0 +1,2 @@
+# 개발·테스트용. 실행에는 requirements.txt 만 있으면 됩니다.
+pytest>=8.0.0

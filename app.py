@@ -404,11 +404,13 @@ BACKGROUNDS = {
     ),
     # 주의: "raw/poured concrete(노출 콘크리트)"라는 단어 자체가 모델에게
     # 거푸집 구멍(규칙적 O 무늬)을 그리게 만든다 — 금지 문구보다 표현 교체가 답.
+    # 2026-08-20: "구멍 없이"처럼 아티팩트를 이름으로 부르는 부정문도 같은 이유로
+    # 전부 걷어냈다(전역 규칙 포함). 이름을 부르면 그린다. 긍정 묘사만 남길 것.
     "concrete_wall": (
         "against a smooth, evenly finished concrete wall — one clean "
         "continuous surface with soft tonal variation and faint "
-        "irregular weathering, completely free of form-tie holes or dot "
-        "marks, the wall running diagonally across the frame. Hard "
+        "irregular weathering, troweled evenly from edge to edge, the "
+        "wall running diagonally across the frame. Hard "
         "afternoon sunlight rakes across it, leaving a crisp shadow "
         "edge and giving the surface real depth"
     ),
@@ -441,8 +443,8 @@ BACKGROUNDS = {
         "steps, a deep doorway reveal or a simple façade. Strong "
         "architectural lines cut diagonally through the frame and soft "
         "daylight models the surfaces without harshness; every concrete "
-        "surface stays perfectly smooth, with no pattern of round holes "
-        "or dots"
+        "surface stays perfectly smooth and evenly finished, its tone "
+        "shifting only gently across the plane"
     ),
     "stairwell": (
         "on a quiet stairwell landing — a metal handrail, a smoothly "
@@ -493,9 +495,9 @@ BACKGROUNDS = {
         "on wide outdoor concrete stairs beside a smooth finished "
         "concrete wall — "
         "metal handrails, strong midday sun cutting hard diagonal shadows "
-        "across the steps. The concrete surfaces stay plain, with only "
-        "irregular natural stains and wear, never any repeating pattern "
-        "of dots or studs. Rough, real street architecture, exactly like "
+        "across the steps. The concrete surfaces are smooth and evenly "
+        "finished, marked only by irregular natural stains and wear. "
+        "Rough, real street architecture, exactly like "
         "a back street of a Korean city"
     ),
     "showroom": (
@@ -556,7 +558,8 @@ BACKGROUNDS = {
         "ground-level facade — a cafe, gallery or small shop — with a "
         "large glass window or glass door behind the model, the "
         "interior only faintly readable through soft reflections in the "
-        "glass. Around the glass, a facade of raw concrete, stone or "
+        "glass. Around the glass, a facade of smooth finished concrete, "
+        "stone or "
         "pale plaster; underfoot, a block-paved or smooth concrete "
         "sidewalk, perhaps a low entrance step or doorway reveal. Shot "
         "from a slight angle so the facade edges and window frames run "
@@ -661,9 +664,10 @@ BACKGROUND_RULE_TEMPLATE = (
     "Background style: a calm, simple, believable location, shot "
     "{setting}. The setting should feel natural and effortless — never "
     "busy, cluttered or loud. Avoid neon, large signage, heavy text and "
-    "crowds. Concrete and stone surfaces read as smooth continuous "
-    "material — never stamp a repeating grid of identical circular "
-    "holes, dots or studs across any wall, floor or facade. The place "
+    "crowds. Concrete and stone surfaces read as one smooth, "
+    "continuous, evenly finished material, its tone shifting only "
+    "softly and irregularly across the surface, like troweled "
+    "plaster. The place "
     "must feel warm and inviting, the way a Korean select shop stages "
     "its lookbook: warm material tones, generous natural light, and — "
     "only where such things naturally live — furnishings that form one "

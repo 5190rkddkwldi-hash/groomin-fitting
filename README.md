@@ -47,11 +47,39 @@ Windows는 `run.bat` 더블클릭으로 실행할 수 있습니다 (서버가 �
 연결하면 Blueprint로 바로 배포됩니다. 배포 후 주소는
 `https://groomin-fitting.onrender.com` 형태가 됩니다.
 
+## 개발하기
+
+```bash
+git clone https://github.com/5190rkddkwldi-hash/groomin-fitting.git
+cd groomin-fitting
+
+# Windows
+dev.bat
+# macOS / Linux
+./dev.sh
+```
+
+가상환경 생성 → 패키지 설치 → 서버 실행까지 한 번에 합니다.
+테스트만 돌리려면 `dev.bat test` / `./dev.sh test` 또는 `pytest`.
+
+**테스트는 API 키도 네트워크도 필요 없습니다.** Gemini 호출을 가짜로 바꿔서
+로그인 게이트·업로드 검사·모델 폴백·부분 실패 처리까지 전부 검증합니다.
+
+| 문서 | 내용 |
+| --- | --- |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 환경 설정, **프롬프트를 고칠 때의 규칙**, 자주 밟는 함정 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 요청 흐름, 프롬프트 조립 순서, 모델 폴백 |
+
 ## 기여
 
 이슈·PR 환영합니다. 배경 프리셋과 포즈는 `app.py` 상단의
 `BACKGROUNDS` / `POSES` / `STANDING_POSES`에 모여 있어서, 프롬프트 문구만
 다듬어도 결과가 크게 달라집니다.
+
+다만 이미지 프롬프트는 **직관과 다르게 동작하는 지점이 많습니다.**
+(부정문을 쓰면 오히려 그 단어를 그린다, `raw concrete` 라는 단어가 거푸집 구멍을
+부른다 등) 손대기 전에 [CONTRIBUTING.md 의 "프롬프트를 고칠 때"](CONTRIBUTING.md#5-프롬프트를-고칠-때)
+를 꼭 읽어주세요. 과거에 실제로 결과물이 망가졌던 기록입니다.
 
 ## 라이선스
 
