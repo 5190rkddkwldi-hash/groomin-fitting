@@ -165,6 +165,7 @@ def _fill(template, **over):
         model_rule=srv.MODEL_RULE, face_rule=srv.FACE_RULE,
         scene_block="SCENE", mood_rule="", pose="POSE",
         pose_style=srv.POSE_STYLE_RULE, styling_rule="", accessory_rule="",
+        shoulder_rule="", tuck_rule="",
         realism_rule=srv.REALISM_RULE,
     )
     values.update(over)

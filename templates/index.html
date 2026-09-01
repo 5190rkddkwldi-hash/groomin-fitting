@@ -385,6 +385,15 @@
             <b>누끼컷을 함께 올리면 색·소재를 훨씬 정확하게 봅니다.</b>
             짠 코디는 모든 컷에 똑같이 적용돼요.
           </p>
+          <div style="margin-top:12px">
+            <label class="lbl" style="font-size:0.8rem">상의 입는 방식</label>
+            <div class="chips">
+              {% for key, label in tucks %}
+              <input type="radio" id="tk-{{ key }}" name="tuck" value="{{ key }}" {% if key == 'keep' %}checked{% endif %}>
+              <label for="tk-{{ key }}">{{ label }}</label>
+              {% endfor %}
+            </div>
+          </div>
           <div class="drop" id="drop3">
             <input type="file" id="instaImage" accept="image/png,image/jpeg,image/webp">
             <span class="drop-icon">📷</span>
@@ -546,6 +555,13 @@ document.querySelectorAll('input[name="styling"]').forEach(el =>
   el.addEventListener("change", syncCodiPanel));
 document.querySelectorAll('input[name="product_type"]').forEach(el =>
   el.addEventListener("change", invalidateCodi));
+// 넣어/빼서 입기가 바뀌면 허리선·벨트가 달라지므로 코디를 다시 짜야 한다
+document.querySelectorAll('input[name="tuck"]').forEach(el =>
+  el.addEventListener("change", invalidateCodi));
+
+function currentTuck() {
+  return document.querySelector('input[name="tuck"]:checked').value;
+}
 [fileInput, document.getElementById("detailImage"), instaInput].forEach(el =>
   el.addEventListener("change", invalidateCodi));
 
@@ -565,6 +581,7 @@ async function runCoordinate() {
   fd.append("product_type",
     document.querySelector('input[name="product_type"]:checked').value);
   fd.append("accessories", document.getElementById("accessories").value);
+  fd.append("tuck", currentTuck());
 
   codiBtn.disabled = true;
   codiBtn.textContent = "상품을 보는 중...";
@@ -826,8 +843,9 @@ form.addEventListener("submit", async (e) => {
     if (!poseset) {
       fd.append("styling", styling);
       // 짜둔 코디 문장을 컷마다 똑같이 실어 보낸다 → 10장이 같은 착장으로 나온다.
-      if (styling === "auto" && autoCodi) {
-        fd.append("styling_desc", autoCodi.styling_en);
+      if (styling === "auto") {
+        fd.append("tuck", currentTuck());
+        if (autoCodi) fd.append("styling_desc", autoCodi.styling_en);
       }
       if (bgList) {
         fd.append("background", bgList[i % bgList.length]);

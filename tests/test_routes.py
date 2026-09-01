@@ -575,3 +575,73 @@ def test_코디부터_컷까지_한_흐름으로_이어진다(logged_in, fake_ge
     assert srv.BASE_POSE not in 프롬프트들[1]
     # 누끼는 상품 디테일만 잠그고 나머지 착장은 풀어준 판본이어야 한다
     assert all(srv.DETAIL_RULE_RESTYLE in pr for pr in 프롬프트들)
+
+
+# ---------------------------------------------------------------- 어깨선 · 상의 입는 방식
+
+def test_AI코디일_때만_어깨선_규칙이_붙는다(logged_in, fake_gemini):
+    r = logged_in.post("/api/process",
+                       data=upload(styling="auto", styling_desc="wide black slacks"),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert srv.SHOULDER_RULE in fake_gemini["prompts"][-1]
+
+    logged_in.post("/api/process", data=upload(styling="street"),
+                   content_type="multipart/form-data")
+    assert srv.SHOULDER_RULE not in fake_gemini["prompts"][-1]
+
+
+def test_어깨를_떨구라는_지시는_어디에도_없다():
+    """이 문구가 남아 있으면 넓은 어깨 규칙과 정면으로 충돌한다."""
+    조각 = [srv.POSE_STYLE_RULE, srv.BASE_POSE, *srv.POSES, *srv.STANDING_POSES]
+    for t in 조각:
+        low = t.lower()
+        assert "shoulders dropped" not in low
+        assert "shoulder dropped" not in low
+        assert "slumped" not in low
+
+
+def test_넣어서_입기와_빼서_입기가_프롬프트에_실린다(logged_in, fake_gemini):
+    for key in ("in", "out"):
+        r = logged_in.post("/api/process",
+                           data=upload(styling="auto", styling_desc="wide slacks",
+                                       tuck=key),
+                           content_type="multipart/form-data")
+        assert r.status_code == 200
+        assert srv.TUCKS[key]["rule"] in fake_gemini["prompts"][-1]
+
+
+def test_사진_그대로면_입는_방식_지시가_없다(logged_in, fake_gemini):
+    logged_in.post("/api/process",
+                   data=upload(styling="auto", styling_desc="wide slacks", tuck="keep"),
+                   content_type="multipart/form-data")
+    prompt = fake_gemini["prompts"][-1]
+    assert "TUCK —" not in prompt
+
+
+def test_이상한_입는_방식_값은_그대로로_떨어진다(logged_in, fake_gemini):
+    r = logged_in.post("/api/process",
+                       data=upload(styling="auto", styling_desc="x", tuck="장난"),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert "TUCK —" not in fake_gemini["prompts"][-1]
+
+
+def test_코디를_짤_때도_입는_방식을_알려준다(logged_in, fake_gemini):
+    fake_gemini["behavior"] = 코디응답()
+    logged_in.post("/api/coordinate", data=codi_upload(tuck="in"),
+                   content_type="multipart/form-data")
+    prompt = fake_gemini["prompts"][-1]
+    assert "넣어 입는다" in prompt and "벨트" in prompt
+
+
+def test_포즈모음에는_어깨선도_입는방식도_끼어들지_않는다(logged_in, fake_gemini):
+    """같은 장면 유지 모드에 스타일링 지시를 섞으면 사진이 어긋난다."""
+    r = logged_in.post("/api/process",
+                       data=upload(mode="poseset", reference=make_data_url(),
+                                   styling="auto", tuck="in"),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    prompt = fake_gemini["prompts"][-1]
+    assert srv.SHOULDER_RULE not in prompt
+    assert "TUCK —" not in prompt

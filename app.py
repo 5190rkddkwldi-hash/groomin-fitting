@@ -113,8 +113,8 @@ BASE_POSE = (
     "has none — while the other arm hangs loose and straight down the "
     "side; the weight sinks onto the leg on the pocket side so that hip "
     "settles low, the other foot rests flat about half a step to the side "
-    "with the knee soft and the toe turned out a little, shoulders "
-    "dropped and level, the front of the outfit left completely "
+    "with the knee soft and the toe turned out a little, the shoulders "
+    "relaxed and carried level, the front of the outfit left completely "
     "unobstructed"
 )
 
@@ -296,7 +296,8 @@ STANDING_POSES = [
     BASE_POSE,
 
     "both hands tucked deep into the pockets, elbows pushed slightly "
-    "outward, shoulders dropped — the weight sinks onto one leg so that "
+    "outward, the shoulders loose but held level — the weight sinks onto "
+    "one leg so that "
     "hip rides higher, while the other foot rests half a step forward "
     "with the knee soft and the toe angled a little outward",
 
@@ -466,11 +467,55 @@ STYLING_RULE_TEMPLATE = (
     "coordinated outfit. "
 )
 
+# AI 자동 코디에서만 얹는 상체 규칙. 쇼핑몰 착용컷이 실물보다 태가 사는 이유는
+# 어깨가 쳐지지 않고 어깨선이 수평으로 넓게 잡히기 때문이다.
+# 옷의 재단·핏은 건드리지 않고 '자세'만 다룬다 (GARMENT_LOCK_RULE 과 충돌 방지).
+SHOULDER_RULE = (
+    "UPPER-BODY CARRIAGE — carry the upper body the way Korean "
+    "shopping-mall fitting cuts do: the shoulders stay open and rolled "
+    "slightly back, so the collarbones read as one straight level line "
+    "across the chest and the back stays broad through the lats. The "
+    "frame should read a little wider across the shoulders than at the "
+    "waist, and the neck stays long. Everything from the ribs down keeps "
+    "the loose, unposed stance described above, and the garment's own "
+    "cut, fit and length are unchanged — this governs posture only. "
+)
+
+# 상의를 하의에 넣어 입을지. 옷의 실제 기장을 바꾸는 게 아니라 '입는 방식'만 정한다.
+TUCKS = {
+    "keep": {"label": "사진 그대로", "rule": "", "ko": ""},
+    "in": {
+        "label": "넣어서 입기",
+        "ko": "상의를 하의에 넣어 입는다(허리선과 벨트가 보인다)",
+        "rule": (
+            "TUCK — the top is worn tucked into the waistband of the "
+            "trousers the whole way round, so the waistline reads clearly "
+            "and the belt or waistband is visible. Let the fabric blouse "
+            "very slightly over the waistband the way a real tuck sits, "
+            "rather than pulled flat and tight. This changes only how the "
+            "top is WORN — its actual length, cut and fit stay exactly as "
+            "they are. "
+        ),
+    },
+    "out": {
+        "label": "빼서 입기",
+        "ko": "상의를 빼서 입는다(밑단이 그대로 보인다)",
+        "rule": (
+            "TUCK — the top is worn untucked, hanging loose over the "
+            "waistband so its full hem line and true length are visible "
+            "all the way round. This changes only how the top is WORN — "
+            "its actual length, cut and fit stay exactly as they are. "
+        ),
+    },
+}
+
+
 POSE_STYLE_RULE = (
     "Posture direction, following Korean fitting-cut convention: the "
     "stance must look loose and slightly slouched rather than upright and "
     "formal — hips pushed a little forward, knees soft and slightly bent, "
-    "shoulders dropped and relaxed, body weight settled unevenly on one "
+    "the shoulders loose and unforced while the shoulder line itself "
+    "stays level and square, body weight settled unevenly on one "
     "leg. This faintly awkward, unposed stance is what makes the garment "
     "hang and drape naturally. Never a stiff, straight-backed runway pose. "
     "WHOLE-BODY COHERENCE — the pose belongs to the whole body, not just "
@@ -898,7 +943,8 @@ PROMPT_NEW_SCENE = (
     "not a studio production. "
     "{garment_lock}"
     "{model_rule}{framing} {face_rule} {scene_block} {mood_rule}Set the "
-    "pose to: {pose}. {pose_style}{styling_rule}{accessory_rule}"
+    "pose to: {pose}. {pose_style}{shoulder_rule}{styling_rule}{tuck_rule}"
+    "{accessory_rule}"
     "{realism_rule}"
     "Keep the whole frame in natural sharp focus — the background must be "
     "clearly readable, NOT blurred, and must never be pixelated, "
@@ -1175,6 +1221,7 @@ def index():
         random_pool=RANDOM_POOL,
         products=[(key, val["label"]) for key, val in PRODUCTS.items()],
         stylings=[(key, val["label"]) for key, val in STYLINGS.items()],
+        tucks=[(key, val["label"]) for key, val in TUCKS.items()],
     )
 
 
@@ -1320,7 +1367,7 @@ COORDINATE_PROMPT = """너는 한국 남성 의류 쇼핑몰의 스타일리스�
 [2단계 — 코디를 짠다]
 {focus_ko}는 절대 바꾸지 않는다. 판매 상품을 뺀 나머지 전부(같이 입는 다른 옷·아우터·이너, 신발, 양말, 모자·가방 같은 소품)를 새로 정한다.
 {doctrine}
-{reference_line}{accessory_line}
+{tuck_line}{reference_line}{accessory_line}
 모델은 180cm 79kg 근육질의 한국 남성이다. 남성복으로만 짠다.
 
 [출력 형식]
@@ -1408,6 +1455,15 @@ def coordinate():
         + ". 코디에 자연스럽게 포함한다.\n"
         if accessories else ""
     )
+    tuck = request.form.get("tuck", "keep")
+    if tuck not in TUCKS:
+        tuck = "keep"
+    tuck_line = (
+        "이 컷에서는 " + TUCKS[tuck]["ko"]
+        + ". 그에 맞게 하의의 허리 라인과 벨트, 기장 밸런스까지 고려해 코디한다."
+        + "\n"
+        if TUCKS[tuck]["ko"] else ""
+    )
     reference_line = (
         "판매자가 준 인스타 스크린샷의 무드를 우선 참고한다.\n"
         if insta_bytes else ""
@@ -1418,6 +1474,7 @@ def coordinate():
         focus_ko=product["label"],
         focus_en=product["focus"],
         doctrine=INSTA_FEED_DOCTRINE,
+        tuck_line=tuck_line,
         reference_line=reference_line,
         accessory_line=accessory_line,
     )
@@ -1604,6 +1661,14 @@ def process():
             # 비어 있으면 '그대로'로 안전하게 떨어진다.
             desc = (request.form.get("styling_desc") or "").strip()[:MAX_STYLING_DESC]
         restyling = bool(desc)
+        # 어깨선 규칙은 AI 자동 코디에서만 얹는다 (사용자 요청 2026-09-01).
+        extra["shoulder_rule"] = SHOULDER_RULE if styling == "auto" else ""
+
+        tuck = request.form.get("tuck", "keep")
+        if tuck not in TUCKS:
+            tuck = "keep"
+        extra["tuck_rule"] = TUCKS[tuck]["rule"]
+
         extra["styling_rule"] = (
             STYLING_RULE_TEMPLATE.format(focus=product["focus"], desc=desc)
             if desc
