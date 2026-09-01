@@ -59,6 +59,17 @@ class ImageModelUnavailable(RuntimeError):
     """모든 이미지 모델 후보가 실패했을 때."""
 
 
+# 폰 원본(수 MB)을 그대로 보내면 업로드·처리에 컷당 몇 초씩 낭비된다.
+# 생성 품질에는 긴 변 1536px이면 충분하므로 그 이상은 줄여서 보낸다.
+# (코디 판독은 1024px이면 충분해서 더 줄여 부른다.)
+def _load_shrunk(raw, max_side=1536):
+    img = Image.open(io.BytesIO(raw))
+    img.load()
+    if max(img.size) > max_side:
+        img.thumbnail((max_side, max_side), Image.LANCZOS)
+    return img
+
+
 def _generate_image_with_fallback(client, prompt, images):
     cached = _image_model_pick["name"]
     candidates = ([cached] if cached else []) + [
@@ -399,6 +410,9 @@ TOP_MOOD_RULE = (
 # 판매 상품은 절대 건드리지 않고 '나머지 코디'만 바꾼다.
 STYLINGS = {
     "keep": {"label": "그대로", "desc": ""},
+    # 고정 문구가 없다 — /api/coordinate 가 상품을 보고 그때그때 지어낸 코디를
+    # styling_desc 로 실어 보낸다. desc 가 비어 있으면 '그대로'로 안전하게 떨어진다.
+    "auto": {"label": "★ AI 자동 코디", "desc": ""},
     "minimal": {
         "label": "미니멀 베이직",
         "desc": (
@@ -854,6 +868,22 @@ DETAIL_RULE = (
     "those surface details stays exactly as in the FIRST photo. "
 )
 
+# 코디를 새로 짜는 경우(코디 스타일이 '그대로'가 아닐 때)의 누끼 규칙.
+# 위 DETAIL_RULE 은 "나머지 착장도 첫 사진 그대로"라고 못박기 때문에 그대로 쓰면
+# 코디 지시와 정면으로 충돌한다 — 파는 상품만 잠그고 나머지는 풀어준다.
+DETAIL_RULE_RESTYLE = (
+    "TWO images are supplied. The FIRST is the worn fitting cut — it "
+    "shows how the garment being sold actually FITS the body: its "
+    "silhouette, looseness, length and proportions on the body all follow "
+    "the FIRST photo exactly. The SECOND is a clean cut-out product shot "
+    "of that same item — read it closely and treat it as the truth for "
+    "the item's fine SURFACE detail: its exact colour and shade, fabric "
+    "texture and weave, print, graphics, lettering, trims, buttons, zips "
+    "and stitching. The cut-out must NEVER override the garment's fit, "
+    "silhouette or length. The REST of the outfit is deliberately being "
+    "restyled and is described below — neither photo governs it. "
+)
+
 ACCESSORY_RULE_TEMPLATE = (
     "Additionally style the look with: {accessories}. Add these naturally "
     "and tastefully so they complement the outfit — but do NOT alter, "
@@ -1251,6 +1281,205 @@ def plan():
     return jsonify(error=f"사용 가능한 텍스트 모델을 찾지 못했습니다: {msg}"), 502
 
 
+
+# ============================================================
+# AI 자동 코디 — 피팅컷(+누끼컷)을 보고 이 상품에 맞는 코디를 직접 짠다.
+# ============================================================
+#
+# 왜 텍스트 모델을 한 번 더 거치나:
+#   1) 이미지 모델에게 "알아서 코디해"라고 하면 컷마다 다른 옷을 입힌다.
+#      여기서 한 번만 코디를 확정해 모든 컷에 같은 문장을 실어 보낸다.
+#   2) 누끼컷의 디테일(색·소재·프린트)을 말로 정확히 읽어내는 일은
+#      이미지 모델보다 텍스트(비전) 모델이 훨씬 잘한다.
+#
+# 인스타 참고에 대하여: 인스타그램은 로그인 없이 인기 피드를 읽을 수 없어서
+# 실시간으로 긁어오지 못한다. 대신 (a) 아래 INSTA_FEED_DOCTRINE 으로 피드에서
+# 실제로 잘 먹히는 코디 문법을 상시 반영하고, (b) 사용자가 인스타 스크린샷을
+# 올리면 그 사진을 직접 보고 참고하게 한다.
+
+INSTA_FEED_DOCTRINE = """인기 인스타 피드(한국 남성 패션 계정·쇼핑몰 스냅)에서 실제로 반응이 좋은 코디의 문법을 따른다:
+- 색은 3색 이내. 무채색(블랙·그레이·아이보리·차콜)이나 흙색 계열을 바탕으로 깔고, 포인트 색은 많아야 하나.
+- 실루엣은 대비로 잡는다. 상의가 오버핏이면 하의는 정돈된 라인으로, 둘 다 넉넉하면 발목과 신발에서 정리해준다.
+- 기장 밸런스가 룩의 완성도를 좌우한다. 밑단이 신발에 살짝 닿아 한 번 접히는 정도가 피드에서 가장 잘 나온다.
+- 신발이 분위기를 결정한다. 상품의 톤에 맞춰 로우탑 레더 스니커즈 / 스웨이드 러너 / 로퍼 / 워크부츠 중 하나로 확실히 정한다.
+- 로고를 여러 개 겹치지 않는다. 브랜드보다 소재감과 톤으로 보여준다.
+- 소품은 하나면 충분하다(볼캡, 얇은 목걸이, 크로스백, 시계 중 하나).
+- 화보처럼 꾸민 룩이 아니라 '실제로 저렇게 입고 나갔다'는 인상이어야 한다.
+- 계절이 읽혀야 한다. 상품의 소재와 두께에서 계절을 판단하고 거기에 맞는 레이어링을 짠다."""
+
+COORDINATE_PROMPT = """너는 한국 남성 의류 쇼핑몰의 스타일리스트다. 판매자가 상품을 대충 걸치고 찍은 피팅컷을 보내왔고, 이 상품이 가장 잘 팔릴 코디를 짜야 한다.
+
+[받은 사진]
+{image_guide}
+
+[1단계 — 상품을 정확히 읽는다]
+판매 상품은 **{focus_ko}**({focus_en})다. 이것만 보고 다음을 확정한다:
+종류와 핏(오버·레귤러·슬림), 기장, 정확한 색과 톤, 소재와 짜임, 프린트·자수·레터링의 유무와 내용, 포켓·단추·지퍼·스트링 같은 디테일, 그리고 소재 두께에서 읽히는 계절.
+누끼컷이 함께 왔다면 색·소재·프린트는 반드시 누끼컷을 기준으로 판단한다(피팅컷은 조명 때문에 색이 틀어져 있다).
+
+[2단계 — 코디를 짠다]
+{focus_ko}는 절대 바꾸지 않는다. 판매 상품을 뺀 나머지 전부(같이 입는 다른 옷·아우터·이너, 신발, 양말, 모자·가방 같은 소품)를 새로 정한다.
+{doctrine}
+{reference_line}{accessory_line}
+모델은 180cm 79kg 근육질의 한국 남성이다. 남성복으로만 짠다.
+
+[출력 형식]
+아래 키를 가진 JSON 객체 하나만 출력한다. 설명이나 코드펜스를 붙이지 않는다.
+- "product": 읽어낸 상품을 한국어 한 줄로. 예) "인디고 워시드 데님 셔츠, 오버핏, 가슴 포켓 2개, 두꺼운 코튼"
+- "coordination": 짠 코디를 한국어 한 줄로. 판매자가 보고 바로 이해할 수 있게. 예) "화이트 헤비 코튼 티셔츠, 차콜 와이드 슬랙스, 화이트 레더 로우탑 스니커즈"
+- "reason": 왜 이 코디인지 한국어 한 문장.
+- "styling_en": 이미지 생성 모델에게 넘길 영어 구절. **명사구로만** 쓴다(문장·마침표·명령문 금지). "Restyle the rest of the outfit as ___" 의 빈칸에 그대로 들어간다. 판매 상품({focus_en})은 여기에 절대 포함하지 않는다. 예) "a plain white heavy-cotton tee, wide charcoal pleated trousers, and white leather low-top sneakers"
+"""
+
+COORDINATE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "product": {"type": "string"},
+        "coordination": {"type": "string"},
+        "reason": {"type": "string"},
+        "styling_en": {"type": "string"},
+    },
+    "required": ["product", "coordination", "styling_en"],
+}
+
+# styling_en 이 명사구가 아니라 잔소리를 달고 오는 경우가 있어 길이를 자른다.
+MAX_STYLING_DESC = 400
+
+
+def _read_image_upload(field, label, required=False):
+    """업로드 이미지 하나를 검사해서 바이트로. 문제가 있으면 (None, 오류메시지)."""
+    f = request.files.get(field)
+    if not f or not f.filename:
+        if required:
+            return None, f"{label}을(를) 선택해주세요."
+        return None, None
+    if f.mimetype not in ALLOWED_CONTENT_TYPES:
+        return None, f"{label}은(는) PNG, JPEG, WEBP만 지원합니다."
+    return f.read(), None
+
+
+@app.route("/api/coordinate", methods=["POST"])
+def coordinate():
+    """피팅컷(+누끼컷·인스타 레퍼런스)을 읽고 코디를 한 벌 짜서 돌려준다.
+
+    화면은 컷을 만들기 **전에 이 엔드포인트를 딱 한 번** 부르고,
+    받은 styling_en 을 모든 컷 요청에 실어 보낸다. 그래야 10장이 같은 코디로 나온다.
+    """
+    api_key = (request.form.get("api_key") or "").strip()
+    if not api_key:
+        return jsonify(error="Google AI Studio API 키를 입력해주세요."), 400
+
+    image_bytes, err = _read_image_upload("image", "피팅컷", required=True)
+    if err:
+        return jsonify(error=err), 400
+    detail_bytes, err = _read_image_upload("detail_image", "누끼컷")
+    if err:
+        return jsonify(error=err), 400
+    insta_bytes, err = _read_image_upload("insta_image", "인스타 레퍼런스")
+    if err:
+        return jsonify(error=err), 400
+
+    product_type = request.form.get("product_type", "top")
+    if product_type not in PRODUCTS:
+        product_type = "top"
+    product = PRODUCTS[product_type]
+
+    # 사진이 몇 장 가는지에 따라 '몇 번째 사진이 무엇인지'를 정확히 알려준다.
+    guides = ["첫 번째 사진: 판매자가 상품을 대충 입고 찍은 피팅컷."]
+    if detail_bytes:
+        guides.append(
+            "두 번째 사진: 같은 상품의 누끼컷(상품 단독). "
+            "색·소재·프린트·부자재의 기준은 이 사진이다."
+        )
+    if insta_bytes:
+        guides.append(
+            f"{'세' if detail_bytes else '두'} 번째 사진: 판매자가 참고하라고 준 "
+            "인스타그램 피드 스크린샷. 이 사진의 코디 무드·색 조합·실루엣을 "
+            "참고하되 그대로 베끼지는 말고, 우리 상품에 맞게 새로 해석한다."
+        )
+    else:
+        guides.append("누끼컷이 없으면 피팅컷만으로 최대한 정확히 판단한다."
+                      if not detail_bytes else "")
+
+    accessories = (request.form.get("accessories") or "").strip()
+    accessory_line = (
+        "\n판매자가 이건 꼭 넣어달라고 했다: "
+        + accessories[:200]
+        + ". 코디에 자연스럽게 포함한다.\n"
+        if accessories else ""
+    )
+    reference_line = (
+        "판매자가 준 인스타 스크린샷의 무드를 우선 참고한다.\n"
+        if insta_bytes else ""
+    )
+
+    prompt = COORDINATE_PROMPT.format(
+        image_guide="\n".join(g for g in guides if g),
+        focus_ko=product["label"],
+        focus_en=product["focus"],
+        doctrine=INSTA_FEED_DOCTRINE,
+        reference_line=reference_line,
+        accessory_line=accessory_line,
+    )
+
+    try:
+        images = [_load_shrunk(image_bytes, 1024)]
+        if detail_bytes:
+            images.append(_load_shrunk(detail_bytes, 1024))
+        if insta_bytes:
+            images.append(_load_shrunk(insta_bytes, 1024))
+    except (OSError, ValueError):
+        return jsonify(error="이미지 파일을 읽지 못했습니다. 다른 파일로 시도해주세요."), 400
+
+    client = genai.Client(api_key=api_key)
+    last_err = None
+    for model in _plan_model_candidates(client):
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=[prompt, *images],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=COORDINATE_SCHEMA,
+                    # 매번 똑같은 코디만 나오면 '다시 짜기'가 의미가 없다.
+                    temperature=1.0,
+                ),
+            )
+        except genai_errors.ClientError as e:
+            msg = (e.message or "").lower()
+            if e.code == 404 or "no longer available" in msg or "not found" in msg:
+                last_err = e
+                continue
+            status = 401 if e.code in (401, 403) else 400
+            return jsonify(error=_friendly_client_error(e)), status
+        except genai_errors.APIError as e:
+            return jsonify(error=f"Gemini 요청 중 오류가 발생했습니다: {e.message}"), 502
+
+        try:
+            data = _extract_json((response.text or "").strip())
+        except ValueError:
+            return jsonify(
+                error="코디 결과를 읽지 못했습니다. 한 번 더 시도해주세요."
+            ), 502
+        styling_en = (data or {}).get("styling_en", "").strip() if isinstance(data, dict) else ""
+        if not styling_en:
+            return jsonify(
+                error="코디가 비어 있습니다. 한 번 더 시도해주세요."
+            ), 502
+        return jsonify(
+            coordination={
+                "product": (data.get("product") or "").strip(),
+                "coordination": (data.get("coordination") or "").strip(),
+                "reason": (data.get("reason") or "").strip(),
+                "styling_en": styling_en[:MAX_STYLING_DESC],
+            },
+            model=model,
+        )
+
+    msg = last_err.message if last_err else "알 수 없는 오류"
+    return jsonify(error=f"사용 가능한 텍스트 모델을 찾지 못했습니다: {msg}"), 502
+
+
 @app.route("/api/process", methods=["POST"])
 def process():
     api_key = (request.form.get("api_key") or "").strip()
@@ -1309,6 +1538,7 @@ def process():
 
     extra = {}
     scene_blocks = None  # 컷마다 배경이 달라지는 경우에만 채운다
+    restyling = False    # 나머지 착장을 새로 입히는 중인가 (누끼 규칙이 갈린다)
     if mode == "poseset" or keep_scene:
         # 보낸 사진을 그대로 두고 서 있는 포즈만 바꾼다. 배경/코디/모델은 건드리지 않는다.
         count = max(1, min(count, POSESET_MAX))
@@ -1368,6 +1598,12 @@ def process():
         if styling not in STYLINGS:
             styling = "keep"
         desc = STYLINGS[styling]["desc"]
+        if styling == "auto":
+            # AI 자동 코디: 화면이 /api/coordinate 로 미리 받아온 코디 문장이
+            # 컷마다 실려 온다(모든 컷이 같은 문장이라 착장이 통일된다).
+            # 비어 있으면 '그대로'로 안전하게 떨어진다.
+            desc = (request.form.get("styling_desc") or "").strip()[:MAX_STYLING_DESC]
+        restyling = bool(desc)
         extra["styling_rule"] = (
             STYLING_RULE_TEMPLATE.format(focus=product["focus"], desc=desc)
             if desc
@@ -1385,7 +1621,13 @@ def process():
             TOP_MOOD_RULE if product_type == "top" and not snap_style else ""
         )
 
-    extra["detail_rule"] = DETAIL_RULE if detail_bytes else ""
+    # 누끼컷 규칙은 코디를 새로 짜는지에 따라 갈린다. 기본 DETAIL_RULE 은
+    # "나머지 착장도 첫 사진 그대로"라고 못박기 때문에, 코디를 새로 입히는
+    # 경우에 그대로 쓰면 코디 지시와 정면으로 충돌한다.
+    if not detail_bytes:
+        extra["detail_rule"] = ""
+    else:
+        extra["detail_rule"] = DETAIL_RULE_RESTYLE if restyling else DETAIL_RULE
 
     accessories = (request.form.get("accessories") or "").strip()
     accessory_rule = (
@@ -1393,15 +1635,6 @@ def process():
         if accessories
         else ""
     )
-
-    # 폰 원본(수 MB)을 그대로 보내면 업로드·처리에 컷당 몇 초씩 낭비된다.
-    # 생성 품질에는 긴 변 1536px이면 충분하므로 그 이상은 줄여서 보낸다.
-    def _load_shrunk(raw, max_side=1536):
-        img = Image.open(io.BytesIO(raw))
-        img.load()
-        if max(img.size) > max_side:
-            img.thumbnail((max_side, max_side), Image.LANCZOS)
-        return img
 
     try:
         contents_images = [_load_shrunk(image_bytes)]

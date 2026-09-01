@@ -10,7 +10,8 @@ import json
 import pytest
 
 import app as srv
-from conftest import client_error, make_data_url, make_png, server_error
+from conftest import (FakeResponse, client_error, make_data_url, make_png,
+                      server_error)
 
 
 def upload(**over):
@@ -365,3 +366,212 @@ def test_포즈모음_첫_컷도_기본_포즈다(logged_in, fake_gemini):
                        content_type="multipart/form-data")
     assert r.status_code == 200
     assert srv.BASE_POSE in _프롬프트(fake_gemini)
+
+
+# ---------------------------------------------------------------- AI 자동 코디
+
+CODI_JSON = (
+    '{"product": "인디고 워시드 데님 셔츠, 오버핏",'
+    ' "coordination": "화이트 티셔츠, 차콜 와이드 슬랙스, 화이트 레더 스니커즈",'
+    ' "reason": "셔츠 색을 무채색으로 받쳐 색이 셋을 넘지 않게 했습니다.",'
+    ' "styling_en": "a plain white heavy-cotton tee, wide charcoal pleated'
+    ' trousers, and white leather low-top sneakers"}'
+)
+
+
+def 코디응답(text=CODI_JSON):
+    return lambda model, prompt: FakeResponse([], text)
+
+
+def codi_upload(**over):
+    data = {
+        "api_key": "테스트키",
+        "product_type": "top",
+        "image": (io.BytesIO(make_png()), "cut.png", "image/png"),
+    }
+    data.update(over)
+    return data
+
+
+def test_코디는_키가_있어야_한다(logged_in, fake_gemini):
+    r = logged_in.post("/api/coordinate", data=codi_upload(api_key=""),
+                       content_type="multipart/form-data")
+    assert r.status_code == 400
+    assert "키" in r.get_json()["error"]
+
+
+def test_코디는_피팅컷이_있어야_한다(logged_in, fake_gemini):
+    data = codi_upload()
+    data.pop("image")
+    r = logged_in.post("/api/coordinate", data=data,
+                       content_type="multipart/form-data")
+    assert r.status_code == 400
+
+
+def test_코디도_로그인이_필요하다(client, fake_gemini):
+    r = client.post("/api/coordinate", data=codi_upload(),
+                    content_type="multipart/form-data")
+    assert r.status_code == 401
+
+
+def test_코디_결과를_돌려준다(logged_in, fake_gemini):
+    fake_gemini["behavior"] = 코디응답()
+    r = logged_in.post("/api/coordinate", data=codi_upload(),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    c = r.get_json()["coordination"]
+    assert c["styling_en"].startswith("a plain white")
+    assert "차콜" in c["coordination"]
+    assert c["product"] and c["reason"]
+
+
+def test_코디_프롬프트에_인스타_문법이_들어간다(logged_in, fake_gemini):
+    fake_gemini["behavior"] = 코디응답()
+    logged_in.post("/api/coordinate", data=codi_upload(),
+                   content_type="multipart/form-data")
+    prompt = fake_gemini["prompts"][-1]
+    assert "인기 인스타 피드" in prompt
+    assert "색은 3색 이내" in prompt
+
+
+def test_누끼컷을_주면_색_기준이_누끼라고_알려준다(logged_in, fake_gemini):
+    fake_gemini["behavior"] = 코디응답()
+    logged_in.post("/api/coordinate",
+                   data=codi_upload(detail_image=(io.BytesIO(make_png()),
+                                                  "nukki.png", "image/png")),
+                   content_type="multipart/form-data")
+    prompt = fake_gemini["prompts"][-1]
+    assert "두 번째 사진" in prompt and "누끼컷" in prompt
+    # 사진도 함께 실려 가야 한다 (프롬프트 1 + 피팅컷 1 + 누끼 1)
+    assert len(fake_gemini["calls"][-1]["contents"]) == 3
+
+
+def test_인스타_스크린샷을_주면_참고하라고_시킨다(logged_in, fake_gemini):
+    fake_gemini["behavior"] = 코디응답()
+    logged_in.post("/api/coordinate",
+                   data=codi_upload(insta_image=(io.BytesIO(make_png()),
+                                                 "feed.png", "image/png")),
+                   content_type="multipart/form-data")
+    prompt = fake_gemini["prompts"][-1]
+    assert "인스타그램 피드 스크린샷" in prompt
+    assert "그대로 베끼지는 말고" in prompt
+    assert len(fake_gemini["calls"][-1]["contents"]) == 3
+
+
+def test_코디가_JSON이_아니면_친절한_오류(logged_in, fake_gemini):
+    fake_gemini["behavior"] = 코디응답("코디를 못 짜겠어요")
+    r = logged_in.post("/api/coordinate", data=codi_upload(),
+                       content_type="multipart/form-data")
+    assert r.status_code == 502
+    assert "코디" in r.get_json()["error"]
+
+
+def test_코디가_비면_친절한_오류(logged_in, fake_gemini):
+    fake_gemini["behavior"] = 코디응답('{"product": "셔츠", "styling_en": ""}')
+    r = logged_in.post("/api/coordinate", data=codi_upload(),
+                       content_type="multipart/form-data")
+    assert r.status_code == 502
+
+
+def test_코디도_은퇴한_모델은_건너뛴다(logged_in, fake_gemini):
+    죽은모델 = srv.PLAN_MODELS[0]
+
+    def behavior(model, prompt):
+        if model == 죽은모델:
+            return client_error(404, "model not found")
+        return FakeResponse([], CODI_JSON)
+
+    fake_gemini["behavior"] = behavior
+    r = logged_in.post("/api/coordinate", data=codi_upload(),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert r.get_json()["model"] != 죽은모델
+
+
+def test_잘못된_키는_코디도_401(logged_in, fake_gemini):
+    fake_gemini["behavior"] = lambda m, p: client_error(401, "API key not valid")
+    r = logged_in.post("/api/coordinate", data=codi_upload(),
+                       content_type="multipart/form-data")
+    assert r.status_code == 401
+
+
+def test_인스타_레퍼런스도_이미지만_받는다(logged_in, fake_gemini):
+    r = logged_in.post("/api/coordinate",
+                       data=codi_upload(insta_image=(io.BytesIO(b"x"),
+                                                     "a.txt", "text/plain")),
+                       content_type="multipart/form-data")
+    assert r.status_code == 400
+
+
+# ---- 짠 코디가 실제 생성 프롬프트에 실리는가
+
+def test_AI코디_문장이_컷_프롬프트에_들어간다(logged_in, fake_gemini):
+    desc = "a plain white tee, wide charcoal slacks, and white sneakers"
+    r = logged_in.post("/api/process",
+                       data=upload(styling="auto", styling_desc=desc),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    prompt = fake_gemini["prompts"][-1]
+    assert desc in prompt
+    assert srv.OUTFIT_KEEP_RULE not in prompt
+
+
+def test_AI코디인데_코디문장이_없으면_원래_착장을_지킨다(logged_in, fake_gemini):
+    """직접 API를 부르는 등으로 문장이 빠져도 옷을 지어내지 않아야 한다."""
+    r = logged_in.post("/api/process", data=upload(styling="auto"),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert srv.OUTFIT_KEEP_RULE in fake_gemini["prompts"][-1]
+
+
+def test_코디를_새로_짤_때는_누끼가_나머지_착장을_잠그지_않는다(logged_in, fake_gemini):
+    """DETAIL_RULE 은 '나머지도 첫 사진 그대로'라 코디 지시와 충돌한다."""
+    r = logged_in.post(
+        "/api/process",
+        data=upload(styling="auto", styling_desc="wide black slacks",
+                    detail_image=(io.BytesIO(make_png()), "n.png", "image/png")),
+        content_type="multipart/form-data")
+    assert r.status_code == 200
+    prompt = fake_gemini["prompts"][-1]
+    assert srv.DETAIL_RULE_RESTYLE in prompt
+    assert srv.DETAIL_RULE not in prompt
+
+
+def test_코디가_그대로면_누끼가_나머지_착장까지_잠근다(logged_in, fake_gemini):
+    r = logged_in.post(
+        "/api/process",
+        data=upload(styling="keep",
+                    detail_image=(io.BytesIO(make_png()), "n.png", "image/png")),
+        content_type="multipart/form-data")
+    assert r.status_code == 200
+    prompt = fake_gemini["prompts"][-1]
+    assert srv.DETAIL_RULE in prompt
+    assert srv.DETAIL_RULE_RESTYLE not in prompt
+
+
+def test_코디부터_컷까지_한_흐름으로_이어진다(logged_in, fake_gemini):
+    """화면이 하는 순서 그대로: 코디를 한 번 짜고 → 그 문장으로 컷 2장."""
+    fake_gemini["behavior"] = 코디응답()
+    r = logged_in.post("/api/coordinate",
+                       data=codi_upload(detail_image=(io.BytesIO(make_png()),
+                                                      "n.png", "image/png")),
+                       content_type="multipart/form-data")
+    desc = r.get_json()["coordination"]["styling_en"]
+
+    fake_gemini["behavior"] = "ok"
+    프롬프트들 = []
+    for i in (0, 1):
+        rr = logged_in.post(
+            "/api/process",
+            data=upload(styling="auto", styling_desc=desc, index=str(i),
+                        detail_image=(io.BytesIO(make_png()), "n.png", "image/png")),
+            content_type="multipart/form-data")
+        assert rr.status_code == 200
+        프롬프트들.append(fake_gemini["prompts"][-1])
+
+    # 두 컷 모두 같은 코디, 포즈만 다름
+    assert all(desc in pr for pr in 프롬프트들)
+    assert srv.BASE_POSE in 프롬프트들[0]
+    assert srv.BASE_POSE not in 프롬프트들[1]
+    # 누끼는 상품 디테일만 잠그고 나머지 착장은 풀어준 판본이어야 한다
+    assert all(srv.DETAIL_RULE_RESTYLE in pr for pr in 프롬프트들)

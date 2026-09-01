@@ -135,9 +135,36 @@
   }
   .drop-clear:hover { color: #ff7b7b; border-color: #ff7b7b; }
   .drop.has-file .drop-clear { display: block; }
-  #preview, #preview2 {
+  #preview, #preview2, #preview3 {
     max-height: 150px; border-radius: 10px; margin-top: 12px; display: none;
   }
+
+  /* ---- AI 자동 코디 ---- */
+  .codi-panel {
+    margin-top: 12px; padding: 14px; border-radius: 13px;
+    background: var(--surface-2); border: 1px solid var(--border);
+  }
+  .codi-panel .drop { padding: 18px 14px; margin-top: 10px; }
+  .codi-btn {
+    width: 100%; margin-top: 12px; padding: 11px;
+    background: var(--surface); color: var(--accent);
+    border: 1px solid var(--accent-dim); border-radius: 11px;
+    font-size: 0.9rem; font-weight: 700; cursor: pointer;
+  }
+  .codi-btn:hover:not(:disabled) { background: #20201a; }
+  .codi-btn:disabled { opacity: .5; cursor: default; }
+  .codi-card {
+    margin-top: 12px; padding: 13px 14px; border-radius: 11px;
+    background: var(--surface); border: 1px solid var(--accent-dim);
+    font-size: 0.87rem;
+  }
+  .codi-card dt {
+    font-size: 0.74rem; font-weight: 700; color: var(--muted);
+    letter-spacing: .04em; margin-top: 9px;
+  }
+  .codi-card dt:first-child { margin-top: 0; }
+  .codi-card dd { margin: 2px 0 0; color: var(--text); }
+  .codi-card dd.accent { color: var(--accent); font-weight: 600; }
 
   /* segmented */
   .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -351,6 +378,27 @@
           <label for="st-{{ key }}">{{ label }}</label>
           {% endfor %}
         </div>
+
+        <div class="codi-panel" id="codiPanel" hidden>
+          <p class="help" style="margin:0">
+            AI가 올린 사진에서 상품을 읽고 인기 인스타 피드 문법으로 코디를 한 벌 짭니다.
+            <b>누끼컷을 함께 올리면 색·소재를 훨씬 정확하게 봅니다.</b>
+            짠 코디는 모든 컷에 똑같이 적용돼요.
+          </p>
+          <div class="drop" id="drop3">
+            <input type="file" id="instaImage" accept="image/png,image/jpeg,image/webp">
+            <span class="drop-icon">📷</span>
+            <span class="drop-text" id="dropText3">참고할 인스타 코디 스크린샷 (선택)</span>
+            <button type="button" class="drop-clear" id="clearInsta">✕ 제거</button>
+          </div>
+          <img id="preview3" alt="인스타 레퍼런스 미리보기">
+          <button type="button" class="codi-btn" id="codiBtn">코디 짜보기</button>
+          <dl class="codi-card" id="codiCard" hidden>
+            <dt>읽어낸 상품</dt><dd id="codiProduct"></dd>
+            <dt>AI가 짠 코디</dt><dd class="accent" id="codiOutfit"></dd>
+            <dt>이유</dt><dd id="codiReason"></dd>
+          </dl>
+        </div>
       </div>
 
       <div class="field" id="bgField">
@@ -462,6 +510,90 @@ wireDrop(
   document.getElementById("detailImage"),
   document.getElementById("dropText2"),
   document.getElementById("preview2"));
+wireDrop(
+  document.getElementById("drop3"),
+  document.getElementById("instaImage"),
+  document.getElementById("dropText3"),
+  document.getElementById("preview3"),
+  document.getElementById("clearInsta"));
+
+// ---------- AI 자동 코디 ----------
+// 컷을 만들기 '전에' 딱 한 번 코디를 확정하고, 그 문장을 모든 컷에 실어 보낸다.
+// (컷마다 따로 물어보면 10장이 죄다 다른 옷을 입는다.)
+const codiPanel = document.getElementById("codiPanel");
+const codiBtn = document.getElementById("codiBtn");
+const codiCard = document.getElementById("codiCard");
+const instaInput = document.getElementById("instaImage");
+let autoCodi = null;   // { product, coordination, reason, styling_en }
+
+function currentStyling() {
+  return document.querySelector('input[name="styling"]:checked').value;
+}
+
+function syncCodiPanel() {
+  const on = currentStyling() === "auto" && !document.getElementById("mode-poseset").checked;
+  codiPanel.hidden = !on;
+}
+
+// 입력이 바뀌면 앞서 짠 코디는 더 이상 그 상품의 것이 아니다.
+function invalidateCodi() {
+  autoCodi = null;
+  codiCard.hidden = true;
+  codiBtn.textContent = "코디 짜보기";
+}
+
+document.querySelectorAll('input[name="styling"]').forEach(el =>
+  el.addEventListener("change", syncCodiPanel));
+document.querySelectorAll('input[name="product_type"]').forEach(el =>
+  el.addEventListener("change", invalidateCodi));
+[fileInput, document.getElementById("detailImage"), instaInput].forEach(el =>
+  el.addEventListener("change", invalidateCodi));
+
+async function runCoordinate() {
+  const apiKey = document.getElementById("apiKey").value.trim();
+  const mainFile = fileInput.files[0];
+  if (!apiKey) { setStatus("API 키를 먼저 입력해주세요.", true); return false; }
+  if (!mainFile) { setStatus("피팅컷 사진을 먼저 올려주세요.", true); return false; }
+
+  const fd = new FormData();
+  fd.append("api_key", apiKey);
+  fd.append("image", mainFile);
+  const detailFile = document.getElementById("detailImage").files[0];
+  if (detailFile) fd.append("detail_image", detailFile);
+  const instaFile = instaInput.files[0];
+  if (instaFile) fd.append("insta_image", instaFile);
+  fd.append("product_type",
+    document.querySelector('input[name="product_type"]:checked').value);
+  fd.append("accessories", document.getElementById("accessories").value);
+
+  codiBtn.disabled = true;
+  codiBtn.textContent = "상품을 보는 중...";
+  setStatus("상품을 살펴보고 코디를 짜는 중입니다.", false, true);
+  try {
+    const resp = await fetch("/api/coordinate", { method: "POST", body: fd });
+    let data = null;
+    try { data = await resp.json(); } catch (e) { /* JSON이 아닌 오류 페이지 */ }
+    if (!resp.ok || !data || !data.coordination) {
+      throw new Error((data && data.error) || `코디를 짜지 못했습니다 (${resp.status})`);
+    }
+    autoCodi = data.coordination;
+    document.getElementById("codiProduct").textContent = autoCodi.product || "-";
+    document.getElementById("codiOutfit").textContent = autoCodi.coordination || "-";
+    document.getElementById("codiReason").textContent = autoCodi.reason || "-";
+    codiCard.hidden = false;
+    codiBtn.textContent = "다시 짜기";
+    setStatus("코디를 짰습니다. 마음에 들면 '피팅컷 생성하기'를 눌러주세요.");
+    return true;
+  } catch (err) {
+    setStatus(err.message, true);
+    codiBtn.textContent = "코디 짜보기";
+    return false;
+  } finally {
+    codiBtn.disabled = false;
+  }
+}
+
+codiBtn.addEventListener("click", runCoordinate);
 
 // 모드에 따라 생성 개수 범위와 안내 문구를 전환
 const QUICK_MAX = {{ quick_max }};
@@ -481,6 +613,7 @@ function applyMode() {
   // 포즈 모음은 올린 사진을 그대로 쓰므로 배경·코디 선택이 필요 없다.
   bgField.hidden = poseset;
   stylingField.hidden = poseset;
+  syncCodiPanel();
   countInput.min = 1;
   countInput.max = poseset ? POSESET_MAX : QUICK_MAX;
   if (+countInput.value > +countInput.max) countInput.value = countInput.max;
@@ -650,11 +783,15 @@ async function runBatch(count, makeFd, prefix, offerPoseSet) {
   submitBtn.textContent = "피팅컷 생성하기";
 }
 
-form.addEventListener("submit", (e) => {
+form.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (running) return;
 
   const poseset = document.getElementById("mode-poseset").checked;
+  // 'AI 자동 코디'인데 아직 코디를 안 짰으면 먼저 짜고 이어서 진행한다.
+  if (!poseset && currentStyling() === "auto" && !autoCodi) {
+    if (!await runCoordinate()) return;
+  }
   const max = poseset ? POSESET_MAX : QUICK_MAX;
   const count = Math.max(1, Math.min(+countInput.value || 1, max));
   const apiKey = document.getElementById("apiKey").value.trim();
@@ -688,6 +825,10 @@ form.addEventListener("submit", (e) => {
     fd.append("accessories", accessories);
     if (!poseset) {
       fd.append("styling", styling);
+      // 짜둔 코디 문장을 컷마다 똑같이 실어 보낸다 → 10장이 같은 착장으로 나온다.
+      if (styling === "auto" && autoCodi) {
+        fd.append("styling_desc", autoCodi.styling_en);
+      }
       if (bgList) {
         fd.append("background", bgList[i % bgList.length]);
         fd.append("garment_aware", "1");
