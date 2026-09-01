@@ -510,6 +510,9 @@ function wireDrop(dropEl, inputEl, textEl, previewEl, clearEl) {
     textEl.textContent = defaultText;
     previewEl.src = "";
     previewEl.style.display = "none";
+    // value를 코드로 비우면 change 이벤트가 저절로 나지 않는다.
+    // 사진이 빠진 걸 다른 곳(AI 코디 무효화, 참고 방식 숨김)도 알아야 해서 직접 알린다.
+    inputEl.dispatchEvent(new Event("change", { bubbles: true }));
   });
 }
 
@@ -534,7 +537,9 @@ wireDrop(
   document.getElementById("drop2"),
   document.getElementById("detailImage"),
   document.getElementById("dropText2"),
-  document.getElementById("preview2"));
+  document.getElementById("preview2"),
+  // 이 인자가 빠져 있어서 누끼컷의 [✕ 제거] 버튼이 눌러도 아무 일도 안 했다
+  document.getElementById("clearDetail"));
 wireDrop(
   document.getElementById("drop3"),
   document.getElementById("instaImage"),

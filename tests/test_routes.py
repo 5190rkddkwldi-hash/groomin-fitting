@@ -771,3 +771,40 @@ def test_참고배경일_때는_상의_무드규칙을_얹지_않는다(logged_i
                                scene_desc="in a select-shop corner"),
                    content_type="multipart/form-data")
     assert srv.TOP_MOOD_RULE not in fake_gemini["prompts"][-1]
+
+
+# ---------------------------------------------------------------- 업로드 제거 버튼
+
+# 2026-09-01 사용자 신고: 누끼컷의 [✕ 제거]가 눌러도 아무 일도 안 함.
+# 원인은 버튼이 없어서가 아니라 wireDrop 에 그 버튼을 안 넘겨서였다
+# (버튼은 HTML 에 있고 CSS 로 보이기까지 해서 더 헷갈렸다).
+# 앞으로 업로드 칸을 추가할 때 같은 실수를 하지 않도록 렌더된 화면으로 확인한다.
+
+def _화면(logged_in):
+    return logged_in.get("/").get_data(as_text=True)
+
+
+def test_모든_제거버튼이_실제로_연결돼_있다(logged_in):
+    import re
+
+    html = _화면(logged_in)
+    버튼들 = re.findall(r'class="drop-clear" id="([A-Za-z0-9_]+)"', html)
+    assert len(버튼들) >= 3, "제거 버튼을 찾지 못했다: %s" % 버튼들
+    연결된것 = re.findall(r'getElementById\("([A-Za-z0-9_]+)"\)\s*\)', html)
+    빠진것 = [b for b in 버튼들 if ('getElementById("%s")' % b) not in html]
+    assert 빠진것 == [], "wireDrop 에 안 넘긴 제거 버튼: %s" % 빠진것
+
+    # wireDrop 호출마다 인자가 5개인지 (5번째가 제거 버튼)
+    호출들 = re.findall(r"wireDrop\((.*?)\);", html, re.S)
+    assert len(호출들) >= 3
+    for 호출 in 호출들:
+        assert "clear" in 호출.lower(), "제거 버튼 없이 부른 wireDrop: %s" % 호출[:80]
+
+
+def test_사진을_지우면_바뀐_걸_다른_곳에도_알린다(logged_in):
+    """input.value 를 코드로 비우면 change 이벤트가 안 난다 —
+
+    그러면 AI 코디 무효화·참고 방식 숨김이 안 돌아간다.
+    """
+    html = _화면(logged_in)
+    assert 'inputEl.dispatchEvent(new Event("change"' in html
