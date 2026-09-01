@@ -470,16 +470,36 @@ STYLING_RULE_TEMPLATE = (
 # AI 자동 코디에서만 얹는 상체 규칙. 쇼핑몰 착용컷이 실물보다 태가 사는 이유는
 # 어깨가 쳐지지 않고 어깨선이 수평으로 넓게 잡히기 때문이다.
 # 옷의 재단·핏은 건드리지 않고 '자세'만 다룬다 (GARMENT_LOCK_RULE 과 충돌 방지).
-SHOULDER_RULE = (
-    "UPPER-BODY CARRIAGE — carry the upper body the way Korean "
-    "shopping-mall fitting cuts do: the shoulders stay open and rolled "
-    "slightly back, so the collarbones read as one straight level line "
-    "across the chest and the back stays broad through the lats. The "
-    "frame should read a little wider across the shoulders than at the "
-    "waist, and the neck stays long. Everything from the ribs down keeps "
-    "the loose, unposed stance described above, and the garment's own "
-    "cut, fit and length are unchanged — this governs posture only. "
-)
+# 어깨 라인 — 기본은 올린 사진을 그대로 따라간다. 넓히기는 사용자가 버튼으로 켠다.
+# (2026-09-01 사용자 요청: "원래 사진에 맞게 연출하고, 어깨 넓게는 버튼으로 따로")
+SHOULDERS = {
+    "keep": {
+        "label": "사진 그대로",
+        "rule": (
+            "SHOULDER LINE — take the shoulders straight from the reference "
+            "photo: the same width across, the same slope, the same way they "
+            "carry. Reproduce that shoulder line as it is rather than "
+            "improving it. "
+        ),
+    },
+    "wide": {
+        "label": "어깨 넓게 보정",
+        # '조금'이 핵심이다. 세게 밀면 보디빌더가 되어 같은 사람으로 안 보인다.
+        "rule": (
+            "SHOULDER LINE — give the upper body the light lift a Korean "
+            "shopping-mall fitting cut has: the shoulders sit open and rolled "
+            "slightly back so the collarbone line reads level, and the neck "
+            "stays long. Widen the shoulder line only a little — a gentle "
+            "correction of the reference photo, the same body standing "
+            "better, still the width a real person has in an everyday "
+            "snapshot. This is carriage, not extra muscle: the build stays "
+            "the model's own and the waist is unchanged. Everything from the "
+            "ribs down keeps the loose, unposed stance described above, and "
+            "the garment's own cut, fit and length are unchanged — this "
+            "governs posture only. "
+        ),
+    },
+}
 
 # 상의를 하의에 넣어 입을지. 옷의 실제 기장을 바꾸는 게 아니라 '입는 방식'만 정한다.
 TUCKS = {
@@ -1224,6 +1244,7 @@ def index():
         stylings=[(key, val["label"]) for key, val in STYLINGS.items()],
         tucks=[(key, val["label"]) for key, val in TUCKS.items()],
         ref_uses=[(key, val["label"]) for key, val in REF_USES.items()],
+        shoulders=[(key, val["label"]) for key, val in SHOULDERS.items()],
     )
 
 
@@ -1757,8 +1778,11 @@ def process():
             # 비어 있으면 '그대로'로 안전하게 떨어진다.
             desc = (request.form.get("styling_desc") or "").strip()[:MAX_STYLING_DESC]
         restyling = bool(desc)
-        # 어깨선 규칙은 AI 자동 코디에서만 얹는다 (사용자 요청 2026-09-01).
-        extra["shoulder_rule"] = SHOULDER_RULE if styling == "auto" else ""
+        # 어깨 라인은 화면의 버튼이 정한다. 기본은 올린 사진 그대로.
+        shoulder = request.form.get("shoulder", "keep")
+        if shoulder not in SHOULDERS:
+            shoulder = "keep"
+        extra["shoulder_rule"] = SHOULDERS[shoulder]["rule"]
         # 여러 장 뽑을 때 컷마다 카메라를 조금씩 다르게. 포즈·배경 디테일은
         # 이미 컷 번호로 갈리므로 여기서는 구도 축만 더한다.
         extra["shot_variety"] = (

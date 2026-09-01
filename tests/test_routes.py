@@ -579,16 +579,58 @@ def test_코디부터_컷까지_한_흐름으로_이어진다(logged_in, fake_ge
 
 # ---------------------------------------------------------------- 어깨선 · 상의 입는 방식
 
-def test_AI코디일_때만_어깨선_규칙이_붙는다(logged_in, fake_gemini):
-    r = logged_in.post("/api/process",
-                       data=upload(styling="auto", styling_desc="wide black slacks"),
+# 2026-09-01 사용자 요청: 어깨 넓히기는 기본이 아니라 버튼으로.
+# 기본은 올린 사진의 어깨를 그대로 따라간다.
+
+def test_기본은_사진의_어깨를_그대로_따라간다(logged_in, fake_gemini):
+    """코디 스타일과 무관하게, 아무것도 안 고르면 원본을 따른다."""
+    for styling in ("keep", "street", "auto"):
+        r = logged_in.post("/api/process",
+                           data=upload(styling=styling, styling_desc="wide slacks"),
+                           content_type="multipart/form-data")
+        assert r.status_code == 200
+        prompt = fake_gemini["prompts"][-1]
+        assert srv.SHOULDERS["keep"]["rule"] in prompt
+        assert srv.SHOULDERS["wide"]["rule"] not in prompt
+
+
+def test_버튼을_켜야_어깨가_넓어진다(logged_in, fake_gemini):
+    r = logged_in.post("/api/process", data=upload(shoulder="wide"),
                        content_type="multipart/form-data")
     assert r.status_code == 200
-    assert srv.SHOULDER_RULE in fake_gemini["prompts"][-1]
+    prompt = fake_gemini["prompts"][-1]
+    assert srv.SHOULDERS["wide"]["rule"] in prompt
+    assert srv.SHOULDERS["keep"]["rule"] not in prompt
 
-    logged_in.post("/api/process", data=upload(styling="street"),
+
+def test_어깨_보정은_AI코디와_상관없이_쓸_수_있다(logged_in, fake_gemini):
+    """예전엔 AI 자동 코디를 골라야만 어깨 규칙이 붙었다."""
+    logged_in.post("/api/process", data=upload(styling="keep", shoulder="wide"),
                    content_type="multipart/form-data")
-    assert srv.SHOULDER_RULE not in fake_gemini["prompts"][-1]
+    assert srv.SHOULDERS["wide"]["rule"] in fake_gemini["prompts"][-1]
+
+
+def test_이상한_어깨값은_사진_그대로로_떨어진다(logged_in, fake_gemini):
+    r = logged_in.post("/api/process", data=upload(shoulder="아주넓게"),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert srv.SHOULDERS["keep"]["rule"] in fake_gemini["prompts"][-1]
+
+
+def test_어깨_보정은_과하지_않게_지시한다():
+    """세게 밀면 보디빌더가 되어 같은 사람으로 안 보인다."""
+    rule = srv.SHOULDERS["wide"]["rule"].lower()
+    assert "only a little" in rule
+    assert "not extra muscle" in rule
+    assert "posture only" in rule
+    # 옷을 건드리지 않는다는 문구가 있어야 GARMENT_LOCK 과 부딪히지 않는다
+    assert "cut, fit and length are unchanged" in rule
+
+
+def test_사진_그대로는_원본을_따르라고만_말한다():
+    rule = srv.SHOULDERS["keep"]["rule"].lower()
+    assert "from the reference photo" in rule
+    assert "rather than improving it" in rule
 
 
 def test_어깨를_떨구라는_지시는_어디에도_없다():
@@ -639,11 +681,12 @@ def test_포즈모음에는_어깨선도_입는방식도_끼어들지_않는다(
     """같은 장면 유지 모드에 스타일링 지시를 섞으면 사진이 어긋난다."""
     r = logged_in.post("/api/process",
                        data=upload(mode="poseset", reference=make_data_url(),
-                                   styling="auto", tuck="in"),
+                                   styling="auto", tuck="in", shoulder="wide"),
                        content_type="multipart/form-data")
     assert r.status_code == 200
     prompt = fake_gemini["prompts"][-1]
-    assert srv.SHOULDER_RULE not in prompt
+    assert srv.SHOULDERS["wide"]["rule"] not in prompt
+    assert srv.SHOULDERS["keep"]["rule"] not in prompt
     assert "TUCK —" not in prompt
 
 

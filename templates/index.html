@@ -426,6 +426,17 @@
         </div>
       </div>
 
+      <div class="field" id="shoulderField">
+        <label class="lbl">어깨 라인 <span style="color:var(--muted);font-weight:400">(자세만 조정 · 옷은 그대로)</span></label>
+        <div class="chips">
+          {% for key, label in shoulders %}
+          <input type="radio" id="sh-{{ key }}" name="shoulder" value="{{ key }}" {% if key == 'keep' %}checked{% endif %}>
+          <label for="sh-{{ key }}">{{ label }}</label>
+          {% endfor %}
+        </div>
+        <p class="help">기본은 올린 사진의 어깨를 그대로 따라갑니다. 어깨가 좁아 보여 아쉬울 때만 보정을 켜세요 — 과하지 않게 살짝만 넓힙니다.</p>
+      </div>
+
       <div class="field" id="bgField">
         <label class="lbl">배경 분위기</label>
         {% for group, items in background_groups %}
@@ -679,6 +690,8 @@ function applyMode() {
   const poseset = document.getElementById("mode-poseset").checked;
   // 포즈 모음은 올린 사진을 그대로 쓰므로 배경·코디 선택이 필요 없다.
   stylingField.hidden = poseset;
+  // 포즈 모음은 올린 사진을 그대로 쓰는 모드라 어깨 조정이 끼어들면 안 된다
+  document.getElementById("shoulderField").hidden = poseset;
   syncCodiPanel();
   syncBgField();
   countInput.min = 1;
@@ -892,6 +905,8 @@ form.addEventListener("submit", async (e) => {
     fd.append("accessories", accessories);
     if (!poseset) {
       fd.append("styling", styling);
+      fd.append("shoulder",
+        document.querySelector('input[name="shoulder"]:checked').value);
       // 짜둔 코디 문장을 컷마다 똑같이 실어 보낸다 → 10장이 같은 착장으로 나온다.
       if (styling === "auto") {
         fd.append("tuck", currentTuck());
