@@ -9,3 +9,8 @@ htmlcov/
 # 로컬에서 만든 결과물
 outputs/
 *.log
+
+# GitHub Actions 워크플로 — 지금 gh 토큰에 workflow 스코프가 없어서 푸시가 거부됩니다.
+# 올리려면 `gh auth refresh -h github.com -s workflow` 로 권한을 준 뒤
+# 이 두 줄을 지우고 커밋하세요. (파일 자체는 로컬에 그대로 있습니다)
+.github/workflows/
