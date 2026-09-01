@@ -27,8 +27,8 @@
 | --- | --- | --- |
 | 무엇을 하나 | 배경을 새로 만들어 착용컷 생성 | 보낸 사진 그대로, 포즈만 변경 |
 | 템플릿 | `PROMPT_NEW_SCENE` | `PROMPT_SAME_SCENE` |
-| 포즈 목록 | `POSES` | `STANDING_POSES` |
-| 최대 장수 | `QUICK_MAX` (10) | `POSESET_MAX` (12) |
+| 포즈 목록 | `POSES` (0번 = `BASE_POSE`) | `STANDING_POSES` (0번 = `BASE_POSE`) |
+| 최대 장수 | `QUICK_MAX` (10) | `POSESET_MAX` (13 = 기본 포즈 1 + 변주 12) |
 | 사진 전달 | 파일 업로드 | 앞서 만든 컷의 data URL |
 
 `reference` 필드에 data URL 이 오면 `mode` 와 상관없이 **자동으로 포즈 모음**이

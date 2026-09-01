@@ -77,6 +77,7 @@ def _prompt_strings():
                  "REALISM_RULE", "TOP_MOOD_RULE", "BACKGROUND_RULE_TEMPLATE",
                  "LOCATION_RULE_VARY", "KEEP_SCENE_RULE", "SCENE_VARIETY_RULE",
                  "DETAIL_RULE", "GARMENT_AWARE_RULE", "POSE_STYLE_RULE",
+                 "FACE_ADAPTIVE_RULE",
                  "PROMPT_NEW_SCENE", "PROMPT_SAME_SCENE"):
         out[name] = getattr(srv, name)
     for i, v in enumerate(srv.SCENE_VARIETY):
@@ -226,6 +227,76 @@ def test_장면_변주_축이_비어_있지_않다():
 def test_포즈_목록이_충분하다():
     assert len(srv.POSES) >= 8
     assert len(srv.STANDING_POSES) >= srv.POSESET_MAX
+
+
+# 2026-09-01 사용자 요청: "기본 포즈(한쪽 주머니에 손)는 기본적으로 나오게".
+# 두 모드 모두 1번 컷(index 0)이 이 포즈여야 하므로 목록 맨 앞에 고정한다.
+def test_기본_포즈가_두_모드_모두_첫_컷이다():
+    assert srv.POSES[0] == srv.BASE_POSE
+    assert srv.STANDING_POSES[0] == srv.BASE_POSE
+    low = srv.BASE_POSE.lower()
+    assert "one hand slipped casually into a" in low and "pocket" in low
+    # 나머지 포즈가 기본 포즈를 그대로 반복하지는 않아야 한다.
+    assert srv.POSES.count(srv.BASE_POSE) == 1
+    assert srv.STANDING_POSES.count(srv.BASE_POSE) == 1
+
+
+def test_포즈_모음은_기본_포즈를_빼고도_변주가_충분하다():
+    """POSESET_MAX 장을 뽑을 때 목록이 한 바퀴 돌지 않아야 컷이 안 겹친다."""
+    assert len(srv.STANDING_POSES) >= srv.POSESET_MAX
+
+
+# 2026-09-01: 상체(팔·손)만 묘사돼 있어 하체가 컷마다 거의 고정되던 문제.
+# 12종 전부가 자기 팔 동작에 맞물리는 하체 문구를 갖고 있어야 한다.
+LOWER_BODY_WORDS = ("leg", "knee", "foot", "feet", "heel", "toe", "hip", "step")
+
+
+def test_포즈마다_하체_지시가_있다():
+    빠진것 = [
+        i for i, pose in enumerate(srv.STANDING_POSES)
+        if not any(w in pose.lower() for w in LOWER_BODY_WORDS)
+    ]
+    assert 빠진것 == [], f"하체 문구가 없는 포즈 번호: {빠진것}"
+
+
+def test_하체_지시가_포즈마다_다르다():
+    """전부 'weight on one leg' 한 문장이면 결국 같은 하체가 나온다."""
+    조각 = []
+    for pose in srv.STANDING_POSES:
+        조각.append(frozenset(
+            w for w in LOWER_BODY_WORDS if w in pose.lower()
+        ))
+    assert len(set(조각)) >= 6, "하체 묘사가 서로 너무 비슷하다"
+
+
+def test_다리를_꼬는_포즈는_없다():
+    """앞으로 다리를 꼬는 동작은 과해 보여서 뺐다 (2026-09-01 사용자 피드백)."""
+    다리교차 = ("legs cross", "cross at the ankle", "crossed at the ankle",
+              "ankle", "one foot behind the other leg")
+    for i, pose in enumerate(srv.STANDING_POSES):
+        low = pose.lower()
+        걸린것 = [w for w in 다리교차 if w in low]
+        assert 걸린것 == [], f"{i}번 포즈에 다리 교차가 되살아났다: {걸린것}"
+    assert "each foot on its own side" in srv.POSE_STYLE_RULE
+
+
+def test_얼굴_규칙이_두_경우를_모두_다룬다():
+    r = srv.FACE_ADAPTIVE_RULE
+    assert "CASE A" in r and "CASE B" in r
+    low = r.lower()
+    # 얼굴 있는 사진 → 같은 사람
+    for w in ("same face", "hairstyle", "same individual"):
+        assert w in low, f"얼굴 일관성 문구 '{w}' 가 빠졌다"
+    # 얼굴 없는 사진 → 지금까지의 규칙 그대로
+    for w in ("base of the neck", "no chin", "no ears"):
+        assert w in low, f"목 아래 크롭 문구 '{w}' 가 빠졌다"
+
+
+def test_전신_연동_규칙이_살아있다():
+    low = srv.POSE_STYLE_RULE.lower()
+    assert "whole-body" in low
+    for w in ("hip", "knee", "foot", "weight"):
+        assert w in low
 
 
 # ---------------------------------------------------------------- 업로드 한도

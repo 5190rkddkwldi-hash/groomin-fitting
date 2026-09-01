@@ -488,7 +488,8 @@ function applyMode() {
     countHelp.textContent =
       `1~${POSESET_MAX}장까지 만듭니다. 여러 장을 동시에 만들어 완성되는 대로 바로 보여드려요.`;
     modeHelp.textContent =
-      "올린 사진의 배경·모델·의상을 그대로 두고 서 있는 포즈만 바꿉니다.";
+      "올린 사진의 배경·모델·의상을 그대로 두고 서 있는 포즈만 바꿉니다. " +
+      "얼굴이 나온 사진은 같은 얼굴 그대로, 얼굴이 없는 사진은 그대로 얼굴 없이 만듭니다.";
   } else {
     countHelp.textContent = `서로 다른 포즈로 최대 ${QUICK_MAX}장까지 만듭니다.`;
     modeHelp.textContent = "한 장씩 다른 장소에서 찍은 것처럼 만듭니다.";

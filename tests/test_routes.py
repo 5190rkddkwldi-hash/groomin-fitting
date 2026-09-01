@@ -161,6 +161,25 @@ def test_포즈_모음은_장면_유지_템플릿을_쓴다(logged_in, fake_gemi
         assert "Edit the FIRST supplied photo" in prompt
 
 
+def test_포즈_모음은_올린_사진에_맞춰_얼굴을_처리한다(logged_in, fake_gemini):
+    """얼굴 있는 사진이면 같은 얼굴 유지, 없는 사진이면 얼굴이 안 나오게 —
+    두 경우를 모두 프롬프트가 담고 있어야 한다."""
+    logged_in.post("/api/process", data=upload(mode="poseset", count="1"),
+                   content_type="multipart/form-data")
+    prompt = fake_gemini["prompts"][0]
+    assert srv.FACE_ADAPTIVE_RULE[:40] in prompt
+    assert "CASE A" in prompt and "CASE B" in prompt
+    assert srv.FACE_RULE[:40] not in prompt, "포즈 모음에 무조건 크롭 규칙이 남아있다"
+
+
+def test_빠른_생성은_언제나_목_아래_크롭(logged_in, fake_gemini):
+    logged_in.post("/api/process", data=upload(mode="quick", count="1"),
+                   content_type="multipart/form-data")
+    prompt = fake_gemini["prompts"][0]
+    assert srv.FACE_RULE[:40] in prompt
+    assert "CASE A" not in prompt, "새 장면 모드에 얼굴 유지 분기가 새어 들어갔다"
+
+
 def test_고른_컷을_이어받으면_자동으로_포즈_모음(logged_in, fake_gemini):
     """data URL 을 보내면 mode 와 무관하게 장면을 유지해야 한다."""
     data = upload(mode="quick", reference=make_data_url())
@@ -313,3 +332,36 @@ def test_너무_큰_요청은_친절한_413(logged_in):
                        content_type="multipart/form-data")
     assert r.status_code == 413
     assert "error" in r.get_json()
+
+
+# ---------------------------------------------------------------- 기본 포즈
+
+# 2026-09-01 사용자 요청: "기본 포즈(한쪽 주머니에 손)는 기본적으로 나오게".
+# 1번 컷(index 0)은 두 모드 모두 무조건 기본 포즈로 나가야 한다.
+
+def _프롬프트(fake_gemini):
+    assert fake_gemini["prompts"], "프롬프트가 한 번도 안 나갔다"
+    return fake_gemini["prompts"][-1]
+
+
+def test_빠른생성_첫_컷은_기본_포즈다(logged_in, fake_gemini):
+    r = logged_in.post("/api/process", data=upload(index="0"),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert srv.BASE_POSE in _프롬프트(fake_gemini)
+
+
+def test_빠른생성_둘째_컷부터는_다른_포즈다(logged_in, fake_gemini):
+    r = logged_in.post("/api/process", data=upload(index="1"),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert srv.BASE_POSE not in _프롬프트(fake_gemini)
+
+
+def test_포즈모음_첫_컷도_기본_포즈다(logged_in, fake_gemini):
+    r = logged_in.post("/api/process",
+                       data=upload(mode="poseset", index="0",
+                                   reference=make_data_url()),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert srv.BASE_POSE in _프롬프트(fake_gemini)

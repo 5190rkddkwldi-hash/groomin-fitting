@@ -38,7 +38,7 @@ REFERRAL_CODE = os.environ.get("REFERRAL_CODE", "grooming2026")
 
 ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
 QUICK_MAX = 10  # 빠른 생성 모드 최대 장수
-POSESET_MAX = 12  # 포즈 모음 모드 최대 장수 (최소 1)
+POSESET_MAX = 13  # 포즈 모음 모드 최대 장수 = 기본 포즈 1 + 변주 12
 # 이미지 모델 후보. 첫 후보가 무응답/혼잡이면 다음 후보로 자동 폴백한다.
 # (플래너 텍스트 모델과 같은 패턴. 2026-08-17 실제 발생: 구글 혼잡으로
 # 3.1-flash-image는 2분+ 무응답, 3-pro-image는 503 'high demand'.)
@@ -92,11 +92,24 @@ def _generate_image_with_fallback(client, prompt, images):
         "일시적인 현상이니 잠시 후 다시 시도해주세요."
     )
 
-# 쇼핑몰 착용컷의 정석 구도 12종. 앞의 4개는 어떤 상품에나 무난해서
-# 빠른 생성 모드에서 우선 사용된다.
+# 쇼핑몰 착용컷의 '기본값' 포즈 — 한쪽 주머니에 손을 넣고 편하게 선 정석 자세.
+# 어떤 상품에나 안전하게 맞아서, 빠른 생성과 포즈 모음 모두 1번 컷은 항상 이 포즈다.
+# (2026-09-01 사용자 요청: "기본 포즈는 기본적으로 나오게")
+BASE_POSE = (
+    "the standard fitting-cut stance: standing toward the camera, turned "
+    "only a few degrees off centre, one hand slipped casually into a "
+    "pocket as far as the wrist — the trouser pocket if the top garment "
+    "has none — while the other arm hangs loose and straight down the "
+    "side; the weight sinks onto the leg on the pocket side so that hip "
+    "settles low, the other foot rests flat about half a step to the side "
+    "with the knee soft and the toe turned out a little, shoulders "
+    "dropped and level, the front of the outfit left completely "
+    "unobstructed"
+)
+
+# 쇼핑몰 착용컷의 정석 구도. 0번은 항상 기본 포즈이고, 뒤로 갈수록 변주가 커진다.
 POSES = [
-    "standing straight toward the camera, weight settled on one leg, one "
-    "hand resting lightly in a pocket, shoulders relaxed",
+    BASE_POSE,
     "turned to a three-quarter angle, body slightly away from the camera, "
     "both hands loose at the sides",
     "captured mid-step, walking calmly and unhurried toward the camera",
@@ -202,6 +215,36 @@ FACE_RULE = (
     "stores shoot 착용컷 — the body starts below the neck. "
 )
 
+# 포즈 모음(같은 장면) 모드 전용 얼굴 규칙.
+# 빠른 생성은 새 장면을 만들기 때문에 늘 목 아래 크롭(FACE_RULE)이지만,
+# 포즈 모음은 '올린 사진의 다음 컷'이라 올린 사진을 따라가야 한다:
+#   얼굴이 나온 사진 → 같은 사람 얼굴을 그대로(다른 사람/미화 금지)
+#   얼굴이 없는 사진 → 지금까지처럼 얼굴이 절대 등장하지 않게
+FACE_ADAPTIVE_RULE = (
+    "FACE — decide this from the supplied photo itself, then follow it "
+    "exactly. "
+    "CASE A, the supplied photo already shows the model's face or any part "
+    "of the head: keep that identical person. Reproduce the very same face — "
+    "the same facial structure and proportions, the same eyes, eyebrows, "
+    "nose, mouth and jaw shape, the same skin tone and texture, the same "
+    "hairstyle, hair colour, length, parting and hairline, and the same "
+    "facial hair if there is any. Keep the same expression and roughly the "
+    "same head angle, letting the head follow the new stance only as far as "
+    "the body naturally carries it. Someone looking at the two photos must "
+    "see the same individual photographed a second later, so treat the face "
+    "as locked identity to be copied rather than something to redraw, "
+    "idealise, smooth, slim, age or restyle. Keep the head inside the frame "
+    "exactly as the supplied photo frames it. "
+    "CASE B, the supplied photo is already cropped below the head so that no "
+    "face is visible: keep exactly that same crop. The top edge of the frame "
+    "stays at the BASE OF THE NECK, at roughly collarbone height, and the "
+    "body starts below the neck — this is how Korean online clothing stores "
+    "shoot 착용컷. No face, no chin, no jawline, no mouth, no ears, no hair "
+    "and no head of any kind may appear anywhere in the image, not even "
+    "partially, blurred or at the very edge. If any part of the chin or jaw "
+    "would enter the frame, crop lower until it is gone. "
+)
+
 # 판매 상품이 컷마다 달라지는 것을 막는 잠금 규칙. 두 모드 모두에 들어간다.
 GARMENT_LOCK_RULE = (
     "PRODUCT LOCK — the single most important requirement: the {focus} "
@@ -235,40 +278,80 @@ OUTFIT_KEEP_RULE = (
 # 자세가 아니라 '팔과 손이 뭔가 하는 중'인 동작 위주다 — 소매를 걷고, 후드를
 # 만지고, 밑단을 당기고, 주머니에 깊숙이 찌른다. 같은 장면 유지 규칙 때문에
 # 폰/가방 같은 새 소품은 등장시키지 않고, 입고 있는 옷을 만지는 동작만 쓴다.
+# 2026-09-01: 상체만 바뀌고 하체가 거의 고정되는 문제 → 12종 전부에 그 팔
+# 동작과 맞물리는 하체 문구(체중 실리는 다리·무릎·발 위치·발끝 방향·골반
+# 라인)를 붙였다. 과장된 화보 포즈가 아니라 실제 쇼핑몰 컷 수준의 작은 변화.
 STANDING_POSES = [
+    BASE_POSE,
+
     "both hands tucked deep into the pockets, elbows pushed slightly "
-    "outward, shoulders dropped, weight settled on one leg",
+    "outward, shoulders dropped — the weight sinks onto one leg so that "
+    "hip rides higher, while the other foot rests half a step forward "
+    "with the knee soft and the toe angled a little outward",
+
     "one hand deep in a pocket, the other hand lifted to adjust the "
-    "collar or neckline, caught mid-gesture",
+    "collar or neckline, caught mid-gesture — the hip on the pocket side "
+    "pushes out and carries the weight, the opposite foot drawn back a "
+    "half step with the heel barely off the ground",
+
     "both arms raised, hands adjusting the hood behind the neck if the "
     "garment has one, otherwise smoothing the back of the collar or "
     "neckline, elbows framing the chest, sleeves shifting naturally "
-    "with the motion",
+    "with the motion — the body settles low as the arms come up: feet "
+    "about hip-width apart, one knee clearly more bent than the other, "
+    "hips tilted toward the slack leg",
+
     "if the sleeves are long, one hand pushing the opposite sleeve up "
     "the forearm as if rolling the cuff, caught halfway; with short "
     "sleeves, one hand lightly pinching and straightening the opposite "
-    "sleeve hem",
+    "sleeve hem — the stance turns with the working arm: one foot set "
+    "forward on a slight diagonal taking most of the weight, the back "
+    "leg trailing straight and relaxed",
+
     "one hand pinching the hem and tugging it lightly sideways so the "
-    "fabric pulls taut and shows its texture, the other arm loose",
+    "fabric pulls taut and shows its texture, the other arm loose — the "
+    "weight stays on the leg nearest that hand and its hip settles down, "
+    "while the other foot rests flat a small distance to the side with "
+    "the knee relaxed",
+
     "arms loosely crossed low over the torso, one hand gripping the "
-    "opposite sleeve fabric, body angled a few degrees off centre",
+    "opposite sleeve fabric, body angled a few degrees off centre — the "
+    "weight sits back on one heel while the other leg slides forward, "
+    "that knee almost straight and the toe turned out",
+
     "one hand resting on the hip with the elbow out, the other hand "
-    "brushing the side seam of the garment flat",
+    "brushing the side seam of the garment flat — the hips push toward "
+    "the hand on the hip and that leg straightens to take the weight, "
+    "the far leg relaxed with a soft knee and the foot turned away",
+
     "both hands lightly holding the bottom hem, straightening the "
-    "garment downward, chin-side shoulder relaxed",
+    "garment downward, chin-side shoulder relaxed — the feet come close "
+    "together and almost parallel, both knees loose, the weight settled "
+    "back onto the heels so the torso leans in a fraction",
+
     "one arm bent with the hand pressed flat against the chest smoothing "
-    "the fabric, the other hand slipped into a pocket",
+    "the fabric, the other hand slipped into a pocket — caught mid-shift: "
+    "one foot pivoting on the ball of the foot with that knee rolling "
+    "gently inward, the other leg planted straight and holding the weight",
+
     "standing at a three-quarter diagonal angle to the camera, both "
     "hands tucked away behind the lower back so the arms half-disappear "
     "behind the torso, chest open, shoulders relaxed, weight settled on "
-    "the back leg with the front foot angled toward the camera — the "
+    "the back leg with the front foot angled toward the camera, that "
+    "front knee soft and the hip line dropped on the loose side — the "
     "front of the garment hangs completely unobstructed",
+
     "one arm swinging slightly across the body as if caught mid-motion, "
-    "the sleeve moving with it, the other hand in a pocket, weight "
-    "shifting between legs",
+    "the sleeve moving with it, the other hand in a pocket — a half step "
+    "is in progress: the front foot lands flat while the back heel has "
+    "just lifted, the weight travelling between the legs and the hips "
+    "rotating a few degrees with it",
+
     "shoulders opened almost in profile toward the camera, the near hand "
     "tucked in a pocket, the far arm reaching across to adjust the cuff "
-    "of the opposite sleeve",
+    "of the opposite sleeve — the feet line up one behind the other "
+    "along that same diagonal, the front knee soft with the weight "
+    "forward and the back heel slightly raised",
 ]
 
 # 모델 표준 — 180cm / 79kg, 옷 입었을 때 체격이 살아 보이도록.
@@ -376,6 +459,19 @@ POSE_STYLE_RULE = (
     "shoulders dropped and relaxed, body weight settled unevenly on one "
     "leg. This faintly awkward, unposed stance is what makes the garment "
     "hang and drape naturally. Never a stiff, straight-backed runway pose. "
+    "WHOLE-BODY COHERENCE — the pose belongs to the whole body, not just "
+    "the arms. Whatever the hands are doing, the hips, legs and feet move "
+    "with them as one connected stance: which leg carries the weight, how "
+    "the hip line tilts, how much each knee bends, where each foot is "
+    "planted and which way its toe points all follow the upper body, and "
+    "they land differently in every cut. Keep the change restrained — the "
+    "everyday way a real person stands while a friend photographs their "
+    "outfit: the feet stay under the body and within about shoulder width, "
+    "each foot on its own side of the body, side by side or one a little "
+    "ahead of the other, "
+    "and the shift stays small, half a step, a turned toe, one soft knee, "
+    "a hip settled to one side. The model stays standing on the same spot "
+    "of floor as before. "
 )
 
 # 심플하되 적당히 고급스러운 장소 위주. 간판/네온 같은 과한 도시 요소는 배제.
@@ -1219,6 +1315,9 @@ def process():
         pose_list = STANDING_POSES
         scene_block = KEEP_SCENE_RULE
         template = PROMPT_SAME_SCENE
+        # 올린 사진에 얼굴이 있으면 그 얼굴을 그대로 지키고,
+        # 없으면 지금까지처럼 목 아래 크롭을 유지한다.
+        face_rule = FACE_ADAPTIVE_RULE
     else:
         # "auto"는 BACKGROUNDS의 항목이 아니라 '컷마다 랜덤'을 뜻하는 특수값이다.
         background = request.form.get("background", "studio")
@@ -1227,6 +1326,8 @@ def process():
         count = max(1, min(count, QUICK_MAX))
         pose_list = POSES
         template = PROMPT_NEW_SCENE
+        # 새 장면을 만드는 모드는 언제나 목 아래 크롭.
+        face_rule = FACE_RULE
 
         # 화면이 '랜덤'을 직접 풀어서 컷마다 배경 키를 지정해 보낼 때 붙는 플래그.
         # 배경이 랜덤으로 골라졌으니 옷에 어울리게 연출하라는 규칙을 유지한다.
@@ -1324,7 +1425,7 @@ def process():
             prompt = template.format(
                 focus=product["focus"],
                 framing=product["framing"],
-                face_rule=FACE_RULE,
+                face_rule=face_rule,
                 garment_lock=GARMENT_LOCK_RULE.format(focus=product["focus"]),
                 scene_block=block,
                 pose_style=POSE_STYLE_RULE,
