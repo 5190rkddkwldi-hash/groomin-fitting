@@ -38,6 +38,14 @@
 `styling_en`(영어 명사구)을 지어내면, 화면이 그 문장을 모든 컷 요청에 `styling_desc`로
 똑같이 실어 보냅니다. 컷마다 물어보면 10장이 전부 다른 옷을 입기 때문입니다.
 
+참고 스크린샷은 `ref_use`로 쓰임새를 고릅니다 — `codi`(코디만) / `background`(배경만) /
+`both`(둘 다, 기본). 배경까지 참고하면 응답에 `scene_en`이 실리고, 화면이 그걸
+`scene_desc`로 넘겨 **배경 프리셋을 밀어냅니다**(`BACKGROUND_RULE_TEMPLATE`의
+`{setting}` 자리에 그대로 꽂힙니다).
+
+여러 장을 뽑을 때 컷마다 달라지는 축은 셋입니다 — 포즈(`POSES[index]`),
+배경 디테일(`SCENE_VARIETY[index]`), 구도(`SHOT_VARIETY[index]`, AI 코디에서만).
+
 주의: 코디를 새로 짤 때는 누끼 규칙이 `DETAIL_RULE`이 아니라
 `DETAIL_RULE_RESTYLE`로 바뀝니다. `DETAIL_RULE`은 "나머지 착장도 첫 사진 그대로"라고
 못박기 때문에 코디 지시와 정면으로 충돌합니다.

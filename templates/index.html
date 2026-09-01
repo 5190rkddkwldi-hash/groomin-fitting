@@ -401,11 +401,27 @@
             <button type="button" class="drop-clear" id="clearInsta">✕ 제거</button>
           </div>
           <img id="preview3" alt="인스타 레퍼런스 미리보기">
+          <div id="refUseField" hidden style="margin-top:10px">
+            <label class="lbl" style="font-size:0.8rem">이 사진에서 참고할 것</label>
+            <div class="chips">
+              {% for key, label in ref_uses %}
+              <input type="radio" id="ru-{{ key }}" name="ref_use" value="{{ key }}" {% if key == 'both' %}checked{% endif %}>
+              <label for="ru-{{ key }}">{{ label }}</label>
+              {% endfor %}
+            </div>
+            <p class="help" style="margin:6px 0 0">
+              배경을 참고하면 아래 '배경 분위기' 대신 이 사진의 장소를 씁니다.
+              여러 장을 뽑으면 같은 결의 다른 장소로 조금씩 바뀝니다.
+            </p>
+          </div>
           <button type="button" class="codi-btn" id="codiBtn">코디 짜보기</button>
           <dl class="codi-card" id="codiCard" hidden>
             <dt>읽어낸 상품</dt><dd id="codiProduct"></dd>
             <dt>AI가 짠 코디</dt><dd class="accent" id="codiOutfit"></dd>
             <dt>이유</dt><dd id="codiReason"></dd>
+            <div id="codiSceneRow" hidden>
+              <dt>참고한 배경</dt><dd class="accent" id="codiScene"></dd>
+            </div>
           </dl>
         </div>
       </div>
@@ -549,6 +565,16 @@ function invalidateCodi() {
   autoCodi = null;
   codiCard.hidden = true;
   codiBtn.textContent = "코디 짜보기";
+  syncBgField();
+}
+
+// 참고 사진에서 배경까지 가져온 경우, 배경 프리셋은 쓰이지 않으므로 감춘다.
+function usingRefScene() {
+  return !!(autoCodi && autoCodi.scene_en);
+}
+function syncBgField() {
+  const poseset = document.getElementById("mode-poseset").checked;
+  document.getElementById("bgField").hidden = poseset || usingRefScene();
 }
 
 document.querySelectorAll('input[name="styling"]').forEach(el =>
@@ -562,6 +588,20 @@ document.querySelectorAll('input[name="tuck"]').forEach(el =>
 function currentTuck() {
   return document.querySelector('input[name="tuck"]:checked').value;
 }
+
+function currentRefUse() {
+  return document.querySelector('input[name="ref_use"]:checked').value;
+}
+
+// 참고 방식은 스크린샷을 올렸을 때만 고를 수 있다
+const refUseField = document.getElementById("refUseField");
+function syncRefUse() {
+  refUseField.hidden = !instaInput.files[0];
+}
+instaInput.addEventListener("change", syncRefUse);
+document.querySelectorAll('input[name="ref_use"]').forEach(el =>
+  el.addEventListener("change", invalidateCodi));
+syncRefUse();
 [fileInput, document.getElementById("detailImage"), instaInput].forEach(el =>
   el.addEventListener("change", invalidateCodi));
 
@@ -582,6 +622,7 @@ async function runCoordinate() {
     document.querySelector('input[name="product_type"]:checked').value);
   fd.append("accessories", document.getElementById("accessories").value);
   fd.append("tuck", currentTuck());
+  if (instaFile) fd.append("ref_use", currentRefUse());
 
   codiBtn.disabled = true;
   codiBtn.textContent = "상품을 보는 중...";
@@ -597,7 +638,11 @@ async function runCoordinate() {
     document.getElementById("codiProduct").textContent = autoCodi.product || "-";
     document.getElementById("codiOutfit").textContent = autoCodi.coordination || "-";
     document.getElementById("codiReason").textContent = autoCodi.reason || "-";
+    const scene = (autoCodi.scene_ko || "").trim();
+    document.getElementById("codiScene").textContent = scene;
+    document.getElementById("codiSceneRow").hidden = !scene;
     codiCard.hidden = false;
+    syncBgField();
     codiBtn.textContent = "다시 짜기";
     setStatus("코디를 짰습니다. 마음에 들면 '피팅컷 생성하기'를 눌러주세요.");
     return true;
@@ -628,9 +673,9 @@ const stylingField = document.getElementById("stylingField");
 function applyMode() {
   const poseset = document.getElementById("mode-poseset").checked;
   // 포즈 모음은 올린 사진을 그대로 쓰므로 배경·코디 선택이 필요 없다.
-  bgField.hidden = poseset;
   stylingField.hidden = poseset;
   syncCodiPanel();
+  syncBgField();
   countInput.min = 1;
   countInput.max = poseset ? POSESET_MAX : QUICK_MAX;
   if (+countInput.value > +countInput.max) countInput.value = countInput.max;
@@ -845,7 +890,11 @@ form.addEventListener("submit", async (e) => {
       // 짜둔 코디 문장을 컷마다 똑같이 실어 보낸다 → 10장이 같은 착장으로 나온다.
       if (styling === "auto") {
         fd.append("tuck", currentTuck());
-        if (autoCodi) fd.append("styling_desc", autoCodi.styling_en);
+        if (autoCodi) {
+          fd.append("styling_desc", autoCodi.styling_en);
+          // 참고 사진에서 배경까지 읽어왔으면 프리셋 대신 그 장소를 쓴다
+          if (autoCodi.scene_en) fd.append("scene_desc", autoCodi.scene_en);
+        }
       }
       if (bgList) {
         fd.append("background", bgList[i % bgList.length]);

@@ -645,3 +645,129 @@ def test_포즈모음에는_어깨선도_입는방식도_끼어들지_않는다(
     prompt = fake_gemini["prompts"][-1]
     assert srv.SHOULDER_RULE not in prompt
     assert "TUCK —" not in prompt
+
+
+# ---------------------------------------------------------------- 참고 방식 · 컷별 변주
+
+CODI_SCENE_JSON = (
+    '{"product": "인디고 데님 셔츠", "coordination": "화이트 티, 차콜 슬랙스",'
+    ' "reason": "무채색으로 받쳤습니다.",'
+    ' "styling_en": "a white tee and charcoal slacks",'
+    ' "scene_ko": "흰 벽과 원목 선반이 있는 편집샵 코너",'
+    ' "scene_en": "in a warm select-shop corner with a white wall and an oak shelf"}'
+)
+
+
+def _인스타첨부(**over):
+    data = codi_upload(insta_image=(io.BytesIO(make_png()), "feed.png", "image/png"))
+    data.update(over)
+    return data
+
+
+def test_코디만_참고하면_배경은_받아오지_않는다(logged_in, fake_gemini):
+    fake_gemini["behavior"] = 코디응답(CODI_SCENE_JSON)
+    r = logged_in.post("/api/coordinate", data=_인스타첨부(ref_use="codi"),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    c = r.get_json()["coordination"]
+    assert c["scene_en"] == "" and c["scene_ko"] == ""
+    prompt = fake_gemini["prompts"][-1]
+    assert "코디만" in prompt and "장소·배경은 참고하지 않는다" in prompt
+    assert "scene_en" not in prompt          # 장소를 요구하지도 않는다
+
+
+def test_배경만_참고하면_옷은_참고하지_말라고_시킨다(logged_in, fake_gemini):
+    fake_gemini["behavior"] = 코디응답(CODI_SCENE_JSON)
+    r = logged_in.post("/api/coordinate", data=_인스타첨부(ref_use="background"),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    c = r.get_json()["coordination"]
+    assert c["scene_en"].startswith("in a warm select-shop")
+    assert "편집샵" in c["scene_ko"]
+    prompt = fake_gemini["prompts"][-1]
+    assert "배경(촬영 장소)만" in prompt
+    assert "나온 옷은 참고하지 않는다" in prompt
+    assert "scene_en" in prompt
+
+
+def test_둘_다_참고가_기본값이다(logged_in, fake_gemini):
+    fake_gemini["behavior"] = 코디응답(CODI_SCENE_JSON)
+    r = logged_in.post("/api/coordinate", data=_인스타첨부(),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert r.get_json()["coordination"]["scene_en"]
+    assert "코디와 배경을 모두" in fake_gemini["prompts"][-1]
+
+
+def test_참고사진이_없으면_배경도_참고방식도_없다(logged_in, fake_gemini):
+    fake_gemini["behavior"] = 코디응답(CODI_SCENE_JSON)
+    r = logged_in.post("/api/coordinate", data=codi_upload(ref_use="background"),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert r.get_json()["coordination"]["scene_en"] == ""
+
+
+def test_이상한_참고방식은_둘다로_떨어진다(logged_in, fake_gemini):
+    fake_gemini["behavior"] = 코디응답(CODI_SCENE_JSON)
+    r = logged_in.post("/api/coordinate", data=_인스타첨부(ref_use="아무거나"),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert "코디와 배경을 모두" in fake_gemini["prompts"][-1]
+
+
+def test_참고배경이_배경프리셋을_밀어낸다(logged_in, fake_gemini):
+    scene = "in a warm select-shop corner with a white wall"
+    r = logged_in.post("/api/process",
+                       data=upload(styling="auto", styling_desc="a white tee",
+                                   scene_desc=scene, background="lawn_park"),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    prompt = fake_gemini["prompts"][-1]
+    assert scene in prompt
+    assert srv.BACKGROUNDS["lawn_park"] not in prompt
+    assert srv.REF_SCENE_NOTE in prompt
+
+
+def test_참고배경으로_여러장_뽑으면_컷마다_달라진다(logged_in, fake_gemini):
+    scene = "in a warm select-shop corner with a white wall"
+    프롬프트들 = []
+    for i in range(4):
+        logged_in.post("/api/process",
+                       data=upload(styling="auto", styling_desc="a white tee",
+                                   scene_desc=scene, index=str(i)),
+                       content_type="multipart/form-data")
+        프롬프트들.append(fake_gemini["prompts"][-1])
+    # 장소는 같지만 배경 디테일·구도·포즈 축이 컷마다 달라야 한다
+    assert all(scene in pr for pr in 프롬프트들)
+    assert len(set(프롬프트들)) == 4
+    for i in range(1, 4):
+        assert srv.SCENE_VARIETY[i] in 프롬프트들[i]
+        assert srv.SHOT_VARIETY[i] in 프롬프트들[i]
+    assert srv.POSES[0] in 프롬프트들[0]
+    assert srv.POSES[1] in 프롬프트들[1]
+
+
+def test_구도_변주는_AI코디에서만_붙는다(logged_in, fake_gemini):
+    logged_in.post("/api/process", data=upload(styling="street", index="1"),
+                   content_type="multipart/form-data")
+    assert srv.SHOT_VARIETY[1] not in fake_gemini["prompts"][-1]
+
+
+def test_구도_변주는_프레이밍을_뒤엎지_않는다():
+    """{framing} 안에서 움직이는 '작은 차이'여야 한다."""
+    금지 = ("full body", "close-up of the face", "portrait of the face",
+          "wide angle", "aerial", "from behind")
+    for v in srv.SHOT_VARIETY[1:]:
+        low = v.lower()
+        assert v.startswith("For THIS cut,")
+        assert not any(w in low for w in 금지), v
+
+
+def test_참고배경일_때는_상의_무드규칙을_얹지_않는다(logged_in, fake_gemini):
+    """장소가 이미 정해졌는데 '사선 벽면' 무드를 덧대면 서로 부딪힌다."""
+    logged_in.post("/api/process",
+                   data=upload(styling="auto", styling_desc="a white tee",
+                               product_type="top",
+                               scene_desc="in a select-shop corner"),
+                   content_type="multipart/form-data")
+    assert srv.TOP_MOOD_RULE not in fake_gemini["prompts"][-1]

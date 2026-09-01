@@ -942,7 +942,8 @@ PROMPT_NEW_SCENE = (
     "snapshot the seller took of the model on location with a phone — "
     "not a studio production. "
     "{garment_lock}"
-    "{model_rule}{framing} {face_rule} {scene_block} {mood_rule}Set the "
+    "{model_rule}{framing} {shot_variety}{face_rule} {scene_block} "
+    "{mood_rule}Set the "
     "pose to: {pose}. {pose_style}{shoulder_rule}{styling_rule}{tuck_rule}"
     "{accessory_rule}"
     "{realism_rule}"
@@ -1222,6 +1223,7 @@ def index():
         products=[(key, val["label"]) for key, val in PRODUCTS.items()],
         stylings=[(key, val["label"]) for key, val in STYLINGS.items()],
         tucks=[(key, val["label"]) for key, val in TUCKS.items()],
+        ref_uses=[(key, val["label"]) for key, val in REF_USES.items()],
     )
 
 
@@ -1354,6 +1356,65 @@ INSTA_FEED_DOCTRINE = """인기 인스타 피드(한국 남성 패션 계정·�
 - 화보처럼 꾸민 룩이 아니라 '실제로 저렇게 입고 나갔다'는 인상이어야 한다.
 - 계절이 읽혀야 한다. 상품의 소재와 두께에서 계절을 판단하고 거기에 맞는 레이어링을 짠다."""
 
+# 참고 스크린샷을 어디까지 참고할지. 배경을 참고하면 배경 프리셋 대신
+# 스크린샷에서 읽어낸 장소가 모든 컷의 배경이 된다.
+REF_USES = {
+    "codi": {
+        "label": "코디만 참고",
+        "task": (
+            "이 사진에서는 **코디만** 참고한다 — 색 조합, 실루엣, 아이템 구성, "
+            "무드. 장소·배경은 참고하지 않는다. 그대로 베끼지 말고 우리 상품에 "
+            "맞게 새로 해석한다."
+        ),
+        "wants_scene": False,
+    },
+    "background": {
+        "label": "배경만 참고",
+        "task": (
+            "이 사진에서는 **배경(촬영 장소)만** 참고한다 — 공간의 종류, 벽·바닥의 "
+            "재질과 색, 빛의 방향과 시간대, 놓여 있는 가구·소품의 결. 이 사진에 "
+            "나온 옷은 참고하지 않는다(코디는 우리 상품만 보고 짠다). 같은 장소를 "
+            "복제하지 말고, '같은 결의 다른 실제 장소'로 해석한다."
+        ),
+        "wants_scene": True,
+    },
+    "both": {
+        "label": "코디 + 배경 둘 다",
+        "task": (
+            "이 사진에서 **코디와 배경을 모두** 참고한다 — 색 조합·실루엣·아이템 "
+            "구성, 그리고 공간의 재질·빛·소품의 결까지. 둘 다 그대로 베끼지 말고 "
+            "우리 상품에 맞게 새로 해석한다."
+        ),
+        "wants_scene": True,
+    },
+}
+
+# 여러 장을 뽑을 때 컷마다 카메라를 조금씩 다르게 놓는다.
+# 카테고리별 {framing} 안에서 움직이는 '작은 차이'로만 쓴다 — 프레이밍 자체를
+# 뒤엎는 지시를 넣으면 상품이 화면에서 작아지거나 얼굴이 들어온다.
+SHOT_VARIETY = [
+    "",
+    "For THIS cut, step the camera a little closer than usual so the "
+    "garment fills more of the frame and less of the surroundings shows. ",
+    "For THIS cut, lower the camera slightly and tilt it up a touch, so "
+    "the body line reads a little longer. ",
+    "For THIS cut, move the camera a step to one side so the model sits "
+    "off-centre and the place opens up on the other side of the frame. ",
+    "For THIS cut, back off slightly and leave a little more room around "
+    "the model, so the location reads more clearly behind him. ",
+    "For THIS cut, turn the model a few degrees further off the camera "
+    "axis so the shot reads as a three-quarter view. ",
+]
+
+# 참고 스크린샷에서 읽어낸 장소를 배경으로 쓸 때. 프리셋과 같은 품질 규칙을
+# 그대로 태우려고 BACKGROUND_RULE_TEMPLATE 의 {setting} 자리에 꽂아 쓴다.
+REF_SCENE_NOTE = (
+    "This location came from a photo the seller admires. Build a real "
+    "place of that same character rather than copying that photo frame "
+    "for frame. "
+)
+
+
 COORDINATE_PROMPT = """너는 한국 남성 의류 쇼핑몰의 스타일리스트다. 판매자가 상품을 대충 걸치고 찍은 피팅컷을 보내왔고, 이 상품이 가장 잘 팔릴 코디를 짜야 한다.
 
 [받은 사진]
@@ -1376,7 +1437,7 @@ COORDINATE_PROMPT = """너는 한국 남성 의류 쇼핑몰의 스타일리스�
 - "coordination": 짠 코디를 한국어 한 줄로. 판매자가 보고 바로 이해할 수 있게. 예) "화이트 헤비 코튼 티셔츠, 차콜 와이드 슬랙스, 화이트 레더 로우탑 스니커즈"
 - "reason": 왜 이 코디인지 한국어 한 문장.
 - "styling_en": 이미지 생성 모델에게 넘길 영어 구절. **명사구로만** 쓴다(문장·마침표·명령문 금지). "Restyle the rest of the outfit as ___" 의 빈칸에 그대로 들어간다. 판매 상품({focus_en})은 여기에 절대 포함하지 않는다. 예) "a plain white heavy-cotton tee, wide charcoal pleated trousers, and white leather low-top sneakers"
-"""
+{scene_output}"""
 
 COORDINATE_SCHEMA = {
     "type": "object",
@@ -1385,12 +1446,15 @@ COORDINATE_SCHEMA = {
         "coordination": {"type": "string"},
         "reason": {"type": "string"},
         "styling_en": {"type": "string"},
+        "scene_ko": {"type": "string"},
+        "scene_en": {"type": "string"},
     },
     "required": ["product", "coordination", "styling_en"],
 }
 
 # styling_en 이 명사구가 아니라 잔소리를 달고 오는 경우가 있어 길이를 자른다.
 MAX_STYLING_DESC = 400
+MAX_SCENE_DESC = 400
 
 
 def _read_image_upload(field, label, required=False):
@@ -1464,10 +1528,24 @@ def coordinate():
         + "\n"
         if TUCKS[tuck]["ko"] else ""
     )
+    ref_use = request.form.get("ref_use", "both")
+    if ref_use not in REF_USES:
+        ref_use = "both"
+    # 참고 사진이 없으면 참고 방식도 의미가 없다.
+    wants_scene = bool(insta_bytes) and REF_USES[ref_use]["wants_scene"]
     reference_line = (
-        "판매자가 준 인스타 스크린샷의 무드를 우선 참고한다.\n"
-        if insta_bytes else ""
+        REF_USES[ref_use]["task"] + "\n" if insta_bytes else ""
     )
+    # 배경까지 참고하는 경우에만 장소를 함께 받아온다.
+    SCENE_OUTPUT = (
+        '- "scene_ko": 참고 사진에서 읽어낸 촬영 장소를 한국어 한 줄로. '
+        '예) "흰 벽과 원목 선반이 있는 편집샵 코너, 큰 창에서 들어오는 오후 자연광"\n'
+        '- "scene_en": 그 장소를 영어 구절로. 반드시 "in a ..." 또는 "on a ..." 처럼 '
+        '전치사로 시작하는 **구절**로 쓴다(문장 금지). '
+        '예) in a warm select-shop corner with a white wall, a light oak shelf '
+        'and afternoon daylight from a large window'
+    )
+    scene_output = SCENE_OUTPUT if wants_scene else ""
 
     prompt = COORDINATE_PROMPT.format(
         image_guide="\n".join(g for g in guides if g),
@@ -1476,6 +1554,7 @@ def coordinate():
         doctrine=INSTA_FEED_DOCTRINE,
         tuck_line=tuck_line,
         reference_line=reference_line,
+        scene_output=scene_output,
         accessory_line=accessory_line,
     )
 
@@ -1523,12 +1602,16 @@ def coordinate():
             return jsonify(
                 error="코디가 비어 있습니다. 한 번 더 시도해주세요."
             ), 502
+        scene_en = (data.get("scene_en") or "").strip() if wants_scene else ""
         return jsonify(
             coordination={
                 "product": (data.get("product") or "").strip(),
                 "coordination": (data.get("coordination") or "").strip(),
                 "reason": (data.get("reason") or "").strip(),
                 "styling_en": styling_en[:MAX_STYLING_DESC],
+                "scene_ko": ((data.get("scene_ko") or "").strip()
+                             if wants_scene else ""),
+                "scene_en": scene_en[:MAX_SCENE_DESC],
             },
             model=model,
         )
@@ -1620,7 +1703,20 @@ def process():
         # 배경이 랜덤으로 골라졌으니 옷에 어울리게 연출하라는 규칙을 유지한다.
         garment_aware = request.form.get("garment_aware") == "1"
 
-        if background == "auto":
+        # 참고 스크린샷에서 배경까지 읽어온 경우 — 프리셋을 밀어내고 이 장소를 쓴다.
+        # 컷마다 SCENE_VARIETY 변주 축을 얹어 같은 결의 '다른 장소'가 되게 한다.
+        scene_desc = (request.form.get("scene_desc") or "").strip()[:MAX_SCENE_DESC]
+
+        if scene_desc:
+            scene_block = (
+                BACKGROUND_RULE_TEMPLATE.format(setting=scene_desc)
+                + " "
+                + REF_SCENE_NOTE
+                + LOCATION_RULE_VARY
+                + " "
+                + SCENE_VARIETY[index % len(SCENE_VARIETY)]
+            )
+        elif background == "auto":
             # 진짜 랜덤: 매 요청마다 순서를 섞어 컷마다 다른 장소를 쓴다.
             picks = random.sample(RANDOM_POOL, min(count, len(RANDOM_POOL)))
             scene_blocks = [
@@ -1663,6 +1759,11 @@ def process():
         restyling = bool(desc)
         # 어깨선 규칙은 AI 자동 코디에서만 얹는다 (사용자 요청 2026-09-01).
         extra["shoulder_rule"] = SHOULDER_RULE if styling == "auto" else ""
+        # 여러 장 뽑을 때 컷마다 카메라를 조금씩 다르게. 포즈·배경 디테일은
+        # 이미 컷 번호로 갈리므로 여기서는 구도 축만 더한다.
+        extra["shot_variety"] = (
+            SHOT_VARIETY[index % len(SHOT_VARIETY)] if styling == "auto" else ""
+        )
 
         tuck = request.form.get("tuck", "keep")
         if tuck not in TUCKS:
@@ -1683,7 +1784,9 @@ def process():
             "concrete_cafe", "styled_corner",
         )
         extra["mood_rule"] = (
-            TOP_MOOD_RULE if product_type == "top" and not snap_style else ""
+            TOP_MOOD_RULE
+            if product_type == "top" and not snap_style and not scene_desc
+            else ""
         )
 
     # 누끼컷 규칙은 코디를 새로 짜는지에 따라 갈린다. 기본 DETAIL_RULE 은
