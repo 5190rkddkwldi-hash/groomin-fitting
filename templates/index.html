@@ -487,6 +487,65 @@ const fileInput = document.getElementById("image");
 const dropText = document.getElementById("dropText");
 const preview = document.getElementById("preview");
 
+// ---------- 사진 미리 줄이기 ----------
+// 예전에는 컷마다 원본 파일을 통째로 다시 올렸다. 컷 10장이면 수천만 화소
+// 사진을 10번 업로드하고 서버가 10번 풀사이즈로 펼치는 셈이라, 느린 데다
+// 무료 서버(512MB를 여러 사람이 나눠 씀)에서는 동시에 만들다 메모리가 터져
+// 워커가 죽었다 — 화면에는 '서버 오류가 발생했습니다 (502)'로만 보였다.
+// 이제 사진을 고른 순간 한 번만 1536px로 줄여두고, 모든 요청이 그걸 쓴다.
+const shrunkCache = new WeakMap();
+
+function hasAlpha(ctx, canvas) {
+  try {
+    const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let i = 3; i < d.length; i += 40) if (d[i] < 250) return true;
+  } catch (e) { return true; }  // 읽을 수 없으면 안전하게 PNG로 둔다
+  return false;
+}
+
+function shrinkPhoto(file, maxSide = 1536) {
+  if (!file) return Promise.resolve(null);
+  const hit = shrunkCache.get(file);
+  if (hit) return hit;
+  const job = new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      // 이미 작고 가벼우면 원본이 제일 정확하다 — 손대지 않는다.
+      if (scale >= 1 && file.size < 1_200_000) {
+        URL.revokeObjectURL(url); resolve(file); return;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      // 누끼컷은 배경이 투명한 PNG라, JPEG로 바꾸면 그 자리가 새까매진다.
+      // 투명한 부분이 있으면 PNG 그대로 두고 크기만 줄인다.
+      const type = hasAlpha(ctx, canvas) ? "image/png" : "image/jpeg";
+      canvas.toBlob((blob) => {
+        resolve(blob && blob.size < file.size ? blob : file);
+      }, type, 0.92);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+  shrunkCache.set(file, job);
+  return job;
+}
+
+// 줄인 사진을 폼에 담는다. 서버는 파일명과 종류(mimetype)로 형식을 검사하므로
+// Blob으로 바뀐 경우 확장자가 맞는 이름을 붙여준다.
+function appendPhoto(fd, field, blob) {
+  if (!blob) return;
+  if (blob.name) { fd.append(field, blob, blob.name); return; }
+  const ext = blob.type === "image/png" ? "png"
+    : blob.type === "image/webp" ? "webp" : "jpg";
+  fd.append(field, blob, `photo.${ext}`);
+}
+
 // 업로드 칸 하나를 미리보기·드래그앤드롭까지 묶어서 초기화
 function wireDrop(dropEl, inputEl, textEl, previewEl, clearEl) {
   const defaultText = textEl.textContent;
@@ -501,7 +560,11 @@ function wireDrop(dropEl, inputEl, textEl, previewEl, clearEl) {
     };
     reader.readAsDataURL(file);
   }
-  inputEl.addEventListener("change", () => show(inputEl.files[0]));
+  inputEl.addEventListener("change", () => {
+    show(inputEl.files[0]);
+    // 미리 줄여두면 생성 버튼을 눌렀을 때 곧바로 올라간다.
+    shrinkPhoto(inputEl.files[0]);
+  });
   ["dragenter", "dragover"].forEach(ev =>
     dropEl.addEventListener(ev, (e) => {
       e.preventDefault(); dropEl.classList.add("hover");
@@ -627,13 +690,18 @@ async function runCoordinate() {
   if (!apiKey) { setStatus("API 키를 먼저 입력해주세요.", true); return false; }
   if (!mainFile) { setStatus("피팅컷 사진을 먼저 올려주세요.", true); return false; }
 
+  const detailFile = document.getElementById("detailImage").files[0];
+  const instaFile = instaInput.files[0];
+  // 원본 3장을 그대로 올리면 20MB가 넘어가 무료 서버가 버티지 못한다.
+  const [mainBlob, detailBlob, instaBlob] = await Promise.all([
+    shrinkPhoto(mainFile), shrinkPhoto(detailFile), shrinkPhoto(instaFile),
+  ]);
+
   const fd = new FormData();
   fd.append("api_key", apiKey);
-  fd.append("image", mainFile);
-  const detailFile = document.getElementById("detailImage").files[0];
-  if (detailFile) fd.append("detail_image", detailFile);
-  const instaFile = instaInput.files[0];
-  if (instaFile) fd.append("insta_image", instaFile);
+  appendPhoto(fd, "image", mainBlob);
+  appendPhoto(fd, "detail_image", detailBlob);
+  appendPhoto(fd, "insta_image", instaBlob);
   fd.append("product_type",
     document.querySelector('input[name="product_type"]:checked').value);
   fd.append("accessories", document.getElementById("accessories").value);
@@ -893,11 +961,17 @@ form.addEventListener("submit", async (e) => {
     }
   }
 
+  // 컷마다 원본을 다시 올리지 않는다 — 한 번 줄인 사진을 10장이 함께 쓴다.
+  setStatus("사진을 준비하는 중입니다.", false, true);
+  const [mainBlob, detailBlob] = await Promise.all([
+    shrinkPhoto(mainFile), shrinkPhoto(detailFile),
+  ]);
+
   runBatch(count, (i) => {
     const fd = new FormData();
     fd.append("api_key", apiKey);
-    fd.append("image", mainFile);
-    if (detailFile) fd.append("detail_image", detailFile);
+    appendPhoto(fd, "image", mainBlob);
+    appendPhoto(fd, "detail_image", detailBlob);
     fd.append("mode", poseset ? "poseset" : "quick");
     fd.append("count", "1");
     fd.append("index", String(i));
@@ -956,6 +1030,7 @@ async function makePoseSet(dataUrl) {
   const detailFile = document.getElementById("detailImage").files[0];
 
   dataUrl = await shrinkDataUrl(dataUrl);
+  const detailBlob = await shrinkPhoto(detailFile);
   runBatch(POSESET_MAX, (i) => {
     const fd = new FormData();
     fd.append("api_key", apiKey);
@@ -964,7 +1039,7 @@ async function makePoseSet(dataUrl) {
     fd.append("index", String(i));
     fd.append("product_type", productType);
     fd.append("accessories", accessories);
-    if (detailFile) fd.append("detail_image", detailFile);
+    appendPhoto(fd, "detail_image", detailBlob);
     return fd;
   }, "pose", false);
 }

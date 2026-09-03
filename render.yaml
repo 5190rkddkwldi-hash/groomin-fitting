@@ -6,7 +6,15 @@ services:
     buildCommand: pip install -r requirements.txt
     # 이미지 생성은 컷당 30초 이상 걸릴 수 있어 타임아웃을 넉넉히,
     # 화면이 컷을 병렬 요청하므로 스레드도 여러 개 둔다.
-    startCommand: gunicorn app:app --threads 8 --timeout 300
+    #
+    # 스레드 8 -> 12: 한 사람이 컷을 4장씩 동시에 요청하므로 8이면 두 명만
+    # 겹쳐도 세 번째 사람의 요청이 큐에서 30~60초를 그냥 기다린다. 그러면
+    # 앞단 엣지의 100초 한도에 걸려 '서버 오류가 발생했습니다 (502)' 가 뜬다.
+    # 메모리(무료 512MB): 이제 사진을 화면에서 1536px 로 줄여 보내므로 요청
+    # 하나가 쥐는 이미지가 약 19MB. 12 x 19MB = 228MB + 파이썬 기본 120MB
+    # 정도 = 350MB 로 한도 안에 든다. (예전처럼 원본을 풀사이즈로 펼치면
+    # 요청 하나가 140MB 를 먹어서 4개만 겹쳐도 워커가 통째로 죽었다.)
+    startCommand: gunicorn app:app --threads 12 --timeout 300
     envVars:
       - key: SECRET_KEY
         generateValue: true

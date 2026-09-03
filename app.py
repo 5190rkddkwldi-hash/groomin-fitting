@@ -13,6 +13,7 @@ import io
 import json
 import os
 import random
+import time
 from datetime import timedelta
 
 from flask import (
@@ -51,6 +52,18 @@ IMAGE_MODELS = [
 ]
 # 이미지 생성 1회 최대 대기(밀리초). 정상 생성은 보통 10~60초 안에 끝난다.
 IMAGE_TIMEOUT_MS = 75_000
+# 배포판은 Cloudflare 엣지를 거쳐 들어오는데, 엣지는 100초 안에 응답이
+# 시작되지 않는 요청을 그냥 끊는다. 끊긴 응답은 JSON이 아니라 오류 페이지라
+# 화면에는 '서버 오류가 발생했습니다 (502)'로만 보인다.
+# 후보 모델을 75초씩 줄줄이 기다리면 (75×3=225초) 반드시 이 한도를 넘으므로,
+# 요청 하나가 쓸 수 있는 총 시간을 못박고 남은 시간이 모자라면 그만둔다.
+# 로컬에는 이런 한도가 없어서 이 문제가 로컬에서는 절대 재현되지 않는다.
+REQUEST_BUDGET_S = 85
+# 다음 후보 모델을 붙잡아 볼 만한 최소 잔여 시간(초). 이보다 적게 남았으면
+# 어차피 엣지에 잘리므로, 정직한 한국어 오류를 제때 돌려주는 편이 낫다.
+MIN_ATTEMPT_S = 20
+# 코디(비전) 호출도 상한이 없으면 똑같이 엣지에 잘린다.
+COORD_TIMEOUT_MS = 55_000
 # 한 번 성공한 모델을 기억해, 죽은 모델의 타임아웃을 컷마다 다시 기다리지 않는다.
 _image_model_pick = {"name": None}
 
@@ -62,21 +75,34 @@ class ImageModelUnavailable(RuntimeError):
 # 폰 원본(수 MB)을 그대로 보내면 업로드·처리에 컷당 몇 초씩 낭비된다.
 # 생성 품질에는 긴 변 1536px이면 충분하므로 그 이상은 줄여서 보낸다.
 # (코디 판독은 1024px이면 충분해서 더 줄여 부른다.)
+#
+# draft()를 load() 앞에 두는 이유: JPEG은 디코드하면서 바로 1/2·1/4·1/8로
+# 줄여 읽을 수 있다. 이게 없으면 5천만 화소 폰 사진 한 장이 메모리에서
+# 143MB로 펼쳐지고, 무료 인스턴스(512MB)에서 컷을 동시에 여러 장 만들면
+# 그것만으로 한도를 넘겨 워커가 통째로 죽는다.
+# 그러면 화면에는 앱의 한국어 오류가 아니라 '서버 오류가 발생했습니다 (502)'만
+# 뜬다 — 앱이 죽어서 JSON을 못 돌려주기 때문. (2026-09-03 배포판 사고 원인)
 def _load_shrunk(raw, max_side=1536):
     img = Image.open(io.BytesIO(raw))
+    img.draft("RGB", (max_side, max_side))  # JPEG이 아니면 아무 일도 안 한다
     img.load()
     if max(img.size) > max_side:
         img.thumbnail((max_side, max_side), Image.LANCZOS)
     return img
 
 
-def _generate_image_with_fallback(client, prompt, images):
+def _generate_image_with_fallback(client, prompt, images, deadline=None):
+    """후보 모델을 차례로 시도한다. deadline(time.monotonic 기준)이 주어지면
+    남은 시간이 모자란 후보는 아예 붙잡지 않는다 — 엣지에 잘려 502가 되느니
+    '혼잡하니 잠시 후' 안내를 제때 돌려주는 편이 낫기 때문."""
     cached = _image_model_pick["name"]
     candidates = ([cached] if cached else []) + [
         m for m in IMAGE_MODELS if m != cached
     ]
     last_err = None
     for model_name in candidates:
+        if deadline is not None and deadline - time.monotonic() < MIN_ATTEMPT_S:
+            break
         try:
             response = client.models.generate_content(
                 model=model_name,
@@ -1187,6 +1213,17 @@ def _extract_json(text):
         return json.loads(text[start:end + 1])
 
 
+@app.errorhandler(500)
+def too_slow_or_broken(e):
+    # 기본 500은 HTML이라 화면 JS가 못 읽고 '서버 오류가 발생했습니다 (500)'만
+    # 뜬다. API 요청에는 읽을 수 있는 문장을 돌려준다.
+    if request.path.startswith("/api/"):
+        return jsonify(
+            error="서버에서 예기치 못한 오류가 났습니다. 잠시 후 다시 시도해주세요."
+        ), 500
+    return e, 500
+
+
 @app.errorhandler(413)
 def request_too_large(e):
     # 기본 413은 HTML이라 화면 JS가 못 읽는다 — JSON으로 통일
@@ -1588,9 +1625,16 @@ def coordinate():
     except (OSError, ValueError):
         return jsonify(error="이미지 파일을 읽지 못했습니다. 다른 파일로 시도해주세요."), 400
 
-    client = genai.Client(api_key=api_key)
+    # 상한이 없으면 느린 호출이 엣지(100초)에 잘려 '서버 오류 502'로 보인다.
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(timeout=COORD_TIMEOUT_MS),
+    )
+    deadline = time.monotonic() + REQUEST_BUDGET_S
     last_err = None
     for model in _plan_model_candidates(client):
+        if deadline - time.monotonic() < MIN_ATTEMPT_S:
+            break
         try:
             response = client.models.generate_content(
                 model=model,
@@ -1637,8 +1681,14 @@ def coordinate():
             model=model,
         )
 
-    msg = last_err.message if last_err else "알 수 없는 오류"
-    return jsonify(error=f"사용 가능한 텍스트 모델을 찾지 못했습니다: {msg}"), 502
+    if last_err is None:
+        # 후보를 하나도 못 붙잡고 시간만 흘렀다 = 구글 쪽이 느린 것.
+        return jsonify(
+            error="코디를 짜는 데 시간이 너무 걸립니다. 잠시 후 다시 시도해주세요."
+        ), 502
+    return jsonify(
+        error=f"사용 가능한 텍스트 모델을 찾지 못했습니다: {last_err.message}"
+    ), 502
 
 
 @app.route("/api/process", methods=["POST"])
@@ -1842,9 +1892,16 @@ def process():
 
     results = []
     warning = None
+    # 이 요청이 쓸 수 있는 시간의 끝. 엣지(100초)에 잘리기 전에 우리가 먼저
+    # 멈추고 만든 컷 + 안내를 정상 JSON으로 돌려준다.
+    deadline = time.monotonic() + REQUEST_BUDGET_S
 
     try:
         for i in range(count):
+            # 여러 장 모드에서 시간이 다 됐으면 만든 것까지만 돌려준다.
+            if i and time.monotonic() > deadline - MIN_ATTEMPT_S:
+                warning = "시간이 오래 걸려 일부 컷만 만들었습니다. 나머지는 다시 시도해주세요."
+                break
             pose = pose_list[(index + i) % len(pose_list)]
             block = scene_blocks[i] if scene_blocks else scene_block
             prompt = template.format(
@@ -1862,8 +1919,11 @@ def process():
             # 그 경우 한 번만 즉시 재시도하면 대부분 성공한다.
             image_data_url = None
             for attempt in range(2):
+                # 빈 응답 재시도도 남은 시간 안에서만 한다.
+                if attempt and time.monotonic() > deadline - MIN_ATTEMPT_S:
+                    break
                 response = _generate_image_with_fallback(
-                    client, prompt, contents_images
+                    client, prompt, contents_images, deadline=deadline
                 )
                 # 안전필터 등으로 응답이 아예 비면 parts가 None이라 그대로 돌면 500이 난다
                 for part in response.parts or []:

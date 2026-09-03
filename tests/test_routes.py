@@ -4,10 +4,13 @@
 `conftest.py` 의 `fake_gemini` 픽스처가 `genai.Client` 를 가로채므로
 API 키 없이 로그인 게이트 · 업로드 검사 · 폴백 · 부분 실패까지 전부 확인된다.
 """
+import inspect
 import io
 import json
+import time
 
 import pytest
+from PIL import Image
 
 import app as srv
 from conftest import (FakeResponse, client_error, make_data_url, make_png,
@@ -851,3 +854,119 @@ def test_사진을_지우면_바뀐_걸_다른_곳에도_알린다(logged_in):
     """
     html = _화면(logged_in)
     assert 'inputEl.dispatchEvent(new Event("change"' in html
+
+
+# ---------------------------------------------------------------------------
+# 배포판 전용 사고: '서버 오류가 발생했습니다 (502)' (2026-09-03)
+#
+# 로컬(램 16GB·루프백 업로드)에서는 절대 재현되지 않고, 무료 인스턴스
+# (512MB·0.1 CPU 한 대를 여러 사람이 공유, 앞에 100초짜리 엣지 타임아웃)
+# 에서만 터지던 것들. 아래 테스트들이 그 조건을 대신 지킨다.
+# ---------------------------------------------------------------------------
+
+def test_큰_JPEG은_펼치기_전에_줄여서_읽는다(monkeypatch):
+    """draft() 없이 load() 하면 5천만 화소가 메모리에서 143MB로 펼쳐진다.
+
+    무료 인스턴스에서 컷을 동시에 만들면 그것만으로 한도를 넘겨 워커가 죽고,
+    화면에는 앱의 한국어 오류가 아니라 '서버 오류 (502)'만 뜬다.
+    """
+    buf = io.BytesIO()
+    Image.new("RGB", (4096, 3072), (200, 180, 160)).save(buf, "JPEG", quality=60)
+
+    본_크기 = []
+    원래_썸네일 = Image.Image.thumbnail
+
+    def 엿보기(self, size, *a, **kw):
+        본_크기.append(self.size)  # thumbnail 을 부르는 시점 = 디코드된 크기
+        return 원래_썸네일(self, size, *a, **kw)
+
+    monkeypatch.setattr(Image.Image, "thumbnail", 엿보기)
+    img = srv._load_shrunk(buf.getvalue(), 1536)
+
+    assert max(img.size) <= 1536
+    assert 본_크기, "thumbnail 이 불리지 않았다"
+    assert max(본_크기[0]) <= 2048, (
+        "draft 가 안 먹었다 — 원본 그대로(%s) 펼쳐졌다" % (본_크기[0],)
+    )
+
+
+def test_PNG는_draft가_없어도_멀쩡히_읽힌다():
+    """draft() 는 JPEG 전용이라 PNG 에서는 아무 일도 하면 안 된다."""
+    img = srv._load_shrunk(make_png(2000, 3000), 1536)
+    assert max(img.size) <= 1536
+
+
+def test_시간이_다_되면_다음_후보를_붙잡지_않는다(fake_gemini):
+    """후보를 75초씩 줄줄이 기다리면 엣지(100초)에 잘려 502가 된다."""
+    fake_gemini["behavior"] = lambda m, p: "ok"
+    with pytest.raises(srv.ImageModelUnavailable):
+        srv._generate_image_with_fallback(
+            srv.genai.Client(api_key="x"), "프롬프트", [],
+            deadline=time.monotonic() - 1,
+        )
+    assert fake_gemini["calls"] == [], "시간이 없는데도 모델을 불렀다"
+
+
+def test_시간이_남으면_평소대로_생성한다(fake_gemini):
+    fake_gemini["behavior"] = lambda m, p: "ok"
+    resp = srv._generate_image_with_fallback(
+        srv.genai.Client(api_key="x"), "프롬프트", [],
+        deadline=time.monotonic() + srv.REQUEST_BUDGET_S,
+    )
+    assert resp.parts
+    assert len(fake_gemini["calls"]) == 1
+
+
+def test_컷_생성이_시간을_넘기면_정직한_안내를_준다(logged_in, fake_gemini, monkeypatch):
+    monkeypatch.setattr(srv, "REQUEST_BUDGET_S", 0)
+    fake_gemini["behavior"] = lambda m, p: "ok"
+    r = logged_in.post("/api/process", data=upload(), content_type="multipart/form-data")
+    assert r.status_code == 502
+    assert "혼잡" in r.get_json()["error"]
+    assert fake_gemini["calls"] == []
+
+
+def test_코디가_시간을_넘기면_정직한_안내를_준다(logged_in, fake_gemini, monkeypatch):
+    monkeypatch.setattr(srv, "REQUEST_BUDGET_S", 0)
+    r = logged_in.post(
+        "/api/coordinate",
+        data={
+            "api_key": "k",
+            "image": (io.BytesIO(make_png()), "cut.png", "image/png"),
+        },
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 502
+    assert "시간" in r.get_json()["error"]
+
+
+def test_예기치_못한_500도_JSON으로_온다():
+    """기본 500 은 HTML 이라 화면이 못 읽고 '서버 오류 (500)' 로만 보인다."""
+    with srv.app.test_request_context("/api/process"):
+        body, code = srv.too_slow_or_broken(Exception("boom"))
+        assert code == 500
+        assert "오류" in body.get_json()["error"]
+
+
+def test_코디_호출에도_타임아웃이_걸려_있다():
+    """상한이 없으면 느린 비전 호출이 엣지에 잘려 502 로 보인다."""
+    코디 = inspect.getsource(srv.coordinate)
+    assert "COORD_TIMEOUT_MS" in 코디
+    assert srv.COORD_TIMEOUT_MS < srv.REQUEST_BUDGET_S * 1000
+
+
+def test_컷마다_원본_사진을_다시_올리지_않는다(logged_in):
+    """컷 10장이면 원본을 10번 올리고 서버가 10번 펼쳤다 — 느림의 정체."""
+    html = _화면(logged_in)
+    assert 'fd.append("image", mainFile)' not in html, "원본을 그대로 올리고 있다"
+    assert 'fd.append("detail_image", detailFile)' not in html
+    assert "shrinkPhoto" in html and "appendPhoto" in html
+    # 한 번 줄인 것을 캐시해 두고 모든 컷이 같이 써야 의미가 있다
+    assert "shrunkCache" in html
+
+
+def test_누끼컷의_투명한_배경을_까맣게_만들지_않는다(logged_in):
+    """투명 PNG 를 JPEG 로 바꾸면 배경이 새까매져 상품 판독이 망가진다."""
+    html = _화면(logged_in)
+    assert "hasAlpha" in html
+    assert 'hasAlpha(ctx, canvas) ? "image/png"' in html
