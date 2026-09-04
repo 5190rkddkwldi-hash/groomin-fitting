@@ -115,6 +115,19 @@ def _is_ratio_option_error(e):
     return "aspect" in msg or "image_config" in msg or "imageconfig" in msg
 
 
+def _is_key_error(e):
+    """키가 잘못됐다는 오류인가.
+
+    구글은 형식이 깨진 키에 401 이 아니라 **400 API_KEY_INVALID** 를 준다.
+    이걸 그냥 폴백에 태우면 후보 모델을 다 돌고 나서 '서버가 혼잡합니다'라는
+    엉뚱한 안내가 나가고, 사용자는 키를 고쳐야 하는 줄 모른다.
+    (2026-09-04 배포판에 잘못된 키로 요청해 보다가 발견)"""
+    msg = e.message or ""
+    return (e.code in (401, 403)
+            or "API_KEY_INVALID" in msg
+            or "API key not valid" in msg)
+
+
 def _generate_image_with_fallback(client, prompt, images, deadline=None):
     """후보 모델을 차례로 시도한다. deadline(time.monotonic 기준)이 주어지면
     남은 시간이 모자란 후보는 아예 붙잡지 않는다 — 엣지에 잘려 502가 되느니
@@ -145,8 +158,8 @@ def _generate_image_with_fallback(client, prompt, images, deadline=None):
                     config=_image_gen_config(with_ratio=False),
                 )
         except genai_errors.ClientError as e:
-            if e.code in (401, 403):
-                raise  # 키 문제는 폴백해도 소용없다
+            if _is_key_error(e):
+                raise  # 키 문제는 폴백해도 소용없다 — 키를 고치라고 알려야 한다
             last_err = e
             continue
         except genai_errors.APIError as e:

@@ -161,6 +161,18 @@ def test_직접_고른_프리셋도_컷마다_변주가_붙는다(logged_in, fak
     assert len(seen) == 3, "컷 번호가 다르면 변주 축도 달라져야 한다"
 
 
+def test_형식이_깨진_키는_혼잡_안내가_아니라_키_안내(logged_in, fake_gemini):
+    """구글은 잘못된 키에 401 이 아니라 400 API_KEY_INVALID 를 준다.
+    이걸 폴백에 태우면 '서버가 혼잡합니다'라는 엉뚱한 안내가 나간다."""
+    fake_gemini["behavior"] = lambda m, p: client_error(400, "API key not valid")
+    r = logged_in.post("/api/process", data=upload(),
+                       content_type="multipart/form-data")
+    assert r.status_code == 400
+    assert "API 키" in r.get_json()["error"]
+    assert "혼잡" not in r.get_json()["error"]
+    assert len(fake_gemini["calls"]) == 1, "키가 틀렸는데 다른 모델까지 불렀다"
+
+
 # ------------------------------------------------------------------ 1:1 비율
 
 def test_모든_컷은_정사각으로_요청된다(logged_in, fake_gemini):
