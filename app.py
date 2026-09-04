@@ -1120,7 +1120,8 @@ def _friendly_client_error(e):
     msg = e.message or ""
     if "API key not valid" in msg or "API_KEY_INVALID" in msg:
         return ("API 키가 올바르지 않습니다. aistudio.google.com에서 발급한 "
-                "'AIza'로 시작하는 키 전체를 공백 없이 붙여넣어주세요.")
+                "키 전체를 공백 없이 붙여넣어주세요. "
+                "('AIza'로 시작하는 키와 'AQ.'로 시작하는 새 형식 키 모두 됩니다.)")
     if e.code == 429 or "RESOURCE_EXHAUSTED" in msg or "quota" in msg.lower():
         return ("API 사용량 한도에 걸렸습니다. 잠시(1분쯤) 후 다시 시도하거나, "
                 "aistudio.google.com에서 결제를 등록하면 한도가 늘어납니다.")
