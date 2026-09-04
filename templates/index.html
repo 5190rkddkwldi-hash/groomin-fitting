@@ -267,7 +267,7 @@
   /* 아직 생성 중이거나 실패한 컷의 자리 표시 */
   #results .slot[hidden] { display: none; }
   #results .slot {
-    aspect-ratio: 3 / 4;
+    aspect-ratio: 1 / 1;  /* 컷이 정사각으로 나오므로 자리 표시도 정사각 */
     display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 10px;
     background: var(--surface-2); color: var(--muted);
@@ -298,7 +298,6 @@
 <nav class="topnav">
   <span class="brand">Shop Tools</span>
   <a href="/" class="tab active">피팅컷 생성</a>
-  <a href="/planner" class="tab">상세페이지 기획</a>
   <span class="spacer"></span>
   <span class="shopname">{{ shop }}</span>
   <a href="/logout" class="tab">로그아웃</a>
@@ -312,6 +311,7 @@
     <p class="sub">
       모델 착용 사진 한 장이면 충분합니다. 얼굴 없이 상품 위주로,
       심플하지만 고급스러운 장소에서 찍은 듯한 피팅컷을 여러 장 만들어드려요.
+      컷은 쇼핑몰·인스타에 바로 올릴 수 있게 <strong>1:1 정사각</strong>으로 나옵니다.
     </p>
   </header>
 

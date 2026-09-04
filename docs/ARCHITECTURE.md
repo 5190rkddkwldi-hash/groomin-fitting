@@ -116,12 +116,21 @@ BACKGROUND_RULE_TEMPLATE(setting = BACKGROUNDS[키])
 
 코드는 `REFERRAL_CODE`, 세션 서명 키는 `SECRET_KEY` 환경변수로 바꿉니다.
 
-## 상세페이지 기획 (`/planner`)
+## 출력 비율 (1:1)
 
-이미지와 무관한 별도 기능입니다. 상품 정보를 받아 `PLAN_PROMPT` 로 텍스트 모델을
-호출하고, `response_mime_type=json` 으로 스키마를 강제해 섹션별 스토리보드를
-받습니다. 모델 후보는 `PLAN_MODELS` 이며, 전부 실패하면 계정에서 실제로 쓸 수 있는
-flash 계열을 조회해 이어서 시도합니다 (`_plan_model_candidates`).
+모든 컷은 정사각으로 나옵니다. 이건 프롬프트로 부탁해서 되는 일이 아니라
+API 파라미터로 못박아야 합니다 — `_image_gen_config()` 가
+`image_config=ImageConfig(aspect_ratio=IMAGE_ASPECT_RATIO)` 를 붙입니다.
+아무 말도 안 하면 이미지 모델은 **받은 참고 사진의 비율을 그대로 따라가서**
+폰 사진(3:4)을 넣으면 세로 컷만 나옵니다.
+
+구도 지시(`SQUARE_FRAME_RULE`)도 새 장면 프롬프트에만 함께 들어갑니다 —
+비율만 바꾸고 구도를 안 알려주면 상품이 프레임 밖으로 밀립니다.
+장면 유지(12포즈) 프롬프트에는 넣지 않습니다(구도 지시가 섞이면 배경이 바뀜).
+
+모델이 `image_config` 자체를 거부하는 400 이면(`_is_ratio_option_error`)
+같은 모델로 비율 없이 한 번만 더 시도합니다. 안전필터 같은 다른 400 은
+그대로 다음 후보 모델로 넘깁니다.
 
 ## 업로드 한도
 

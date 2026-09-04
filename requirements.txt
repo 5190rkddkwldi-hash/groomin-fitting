@@ -1,4 +1,4 @@
 flask>=3.0.0
-google-genai>=2.0.0
+google-genai>=2.19.0  # image_config(aspect_ratio) 지원
 pillow>=10.0.0
 gunicorn>=22.0.0

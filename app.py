@@ -41,7 +41,7 @@ ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
 QUICK_MAX = 10  # 빠른 생성 모드 최대 장수
 POSESET_MAX = 13  # 포즈 모음 모드 최대 장수 = 기본 포즈 1 + 변주 12
 # 이미지 모델 후보. 첫 후보가 무응답/혼잡이면 다음 후보로 자동 폴백한다.
-# (플래너 텍스트 모델과 같은 패턴. 2026-08-17 실제 발생: 구글 혼잡으로
+# (코디 텍스트 모델과 같은 패턴. 2026-08-17 실제 발생: 구글 혼잡으로
 # 3.1-flash-image는 2분+ 무응답, 3-pro-image는 503 'high demand'.)
 # 사용자 방침: 화질이 우선 — lite 같은 하위 모델로 몰래 낮추지 않는다.
 # 전부 실패하면 '혼잡하니 잠시 후 재시도' 오류를 그대로 보여준다.
@@ -50,6 +50,11 @@ IMAGE_MODELS = [
     "gemini-3.1-flash-image-preview",
     "gemini-3-pro-image",
 ]
+# 출력 비율 — 쇼핑몰 상세페이지와 인스타 피드에 그대로 올릴 수 있게 정사각으로 뽑는다.
+# 이건 프롬프트로 부탁해서 되는 일이 아니다. 이미지 모델은 아무 말이 없으면
+# 받은 참고 사진의 비율을 그대로 따라가므로(폰 사진이면 3:4 세로), 컷이 죄다
+# 세로로 나왔다. API 파라미터(image_config.aspect_ratio)로 못박아야 지켜진다.
+IMAGE_ASPECT_RATIO = "1:1"
 # 이미지 생성 1회 최대 대기(밀리초). 정상 생성은 보통 10~60초 안에 끝난다.
 IMAGE_TIMEOUT_MS = 75_000
 # 배포판은 Cloudflare 엣지를 거쳐 들어오는데, 엣지는 100초 안에 응답이
@@ -91,6 +96,25 @@ def _load_shrunk(raw, max_side=1536):
     return img
 
 
+def _image_gen_config(with_ratio=True):
+    """이미지 생성 설정. with_ratio=False 는 비율 옵션을 모르는 모델용 비상구."""
+    config = types.GenerateContentConfig(
+        response_modalities=[types.Modality.TEXT, types.Modality.IMAGE],
+    )
+    if with_ratio:
+        config.image_config = types.ImageConfig(aspect_ratio=IMAGE_ASPECT_RATIO)
+    return config
+
+
+def _is_ratio_option_error(e):
+    """모델이 비율 옵션 자체를 못 알아들은 400인가. 키·안전필터 400과 구분해야
+    한다 — 그런 400 까지 비율 없이 재시도하면 세로 컷이 조용히 돌아온다."""
+    if e.code != 400:
+        return False
+    msg = (e.message or "").lower()
+    return "aspect" in msg or "image_config" in msg or "imageconfig" in msg
+
+
 def _generate_image_with_fallback(client, prompt, images, deadline=None):
     """후보 모델을 차례로 시도한다. deadline(time.monotonic 기준)이 주어지면
     남은 시간이 모자란 후보는 아예 붙잡지 않는다 — 엣지에 잘려 502가 되느니
@@ -104,13 +128,22 @@ def _generate_image_with_fallback(client, prompt, images, deadline=None):
         if deadline is not None and deadline - time.monotonic() < MIN_ATTEMPT_S:
             break
         try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=[prompt, *images],
-                config=types.GenerateContentConfig(
-                    response_modalities=[types.Modality.TEXT, types.Modality.IMAGE],
-                ),
-            )
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[prompt, *images],
+                    config=_image_gen_config(),
+                )
+            except genai_errors.ClientError as e:
+                # 비율 옵션을 모르는 모델이면 그것만 빼고 한 번 더 — 세로로라도
+                # 컷은 나오게 한다. 그 외의 400은 그대로 폴백 로직에 넘긴다.
+                if not _is_ratio_option_error(e):
+                    raise
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[prompt, *images],
+                    config=_image_gen_config(with_ratio=False),
+                )
         except genai_errors.ClientError as e:
             if e.code in (401, 403):
                 raise  # 키 문제는 폴백해도 소용없다
@@ -981,6 +1014,17 @@ ACCESSORY_RULE_TEMPLATE = (
     "cover or replace the main product itself. "
 )
 
+# 결과물은 정사각(1:1)이다 — 비율 자체는 API(image_config)로 못박지만, 모델이
+# 세로 사진을 가정하고 구도를 잡으면 상품이 프레임 밖으로 밀려난다.
+# 그래서 구도 지시에도 "네가 채울 화면은 정사각"이라고 알려준다.
+# (장면 유지 모드에는 넣지 않는다 — 그쪽에 구도 지시를 섞으면 배경이 바뀐다.)
+SQUARE_FRAME_RULE = (
+    "The finished photograph is SQUARE — equal width and height. Compose "
+    "for that square frame: the whole of the {focus} must sit inside it "
+    "with a little room to spare, and fill the extra width with the "
+    "location rather than by pulling the camera back off the garment. "
+)
+
 # 새 장소에서 찍은 것처럼 만드는 경우
 PROMPT_NEW_SCENE = (
     "{detail_rule}Using the exact same {focus} shown in the reference "
@@ -988,7 +1032,7 @@ PROMPT_NEW_SCENE = (
     "snapshot the seller took of the model on location with a phone — "
     "not a studio production. "
     "{garment_lock}"
-    "{model_rule}{framing} {shot_variety}{face_rule} {scene_block} "
+    "{model_rule}{framing} {square_frame}{shot_variety}{face_rule} {scene_block} "
     "{mood_rule}Set the "
     "pose to: {pose}. {pose_style}{shoulder_rule}{styling_rule}{tuck_rule}"
     "{accessory_rule}"
@@ -1024,23 +1068,20 @@ PROMPT_SAME_SCENE = (
 
 
 # ============================================================
-# 상세페이지 기획 (스토리보드 생성) — /planner
-# ChatGPT의 '기획 최적화 테크트리 5.0' 류 GPT를 의류 쇼핑몰 전용으로
-# 재설계한 것. 출력 형식을 JSON 스키마로 고정해 매번 같은 구조의
-# 기획안이 나오도록 한다 (대화형 GPT보다 일관성이 좋은 이유).
+# 텍스트(비전) 모델 — AI 자동 코디가 상품을 읽고 코디를 짜는 데 쓴다.
 # ============================================================
 
 # 텍스트 모델 — 앞에서부터 시도하고, 없거나 은퇴한 모델이면 다음 후보로 넘어간다.
 # 전부 실패하면 계정에서 실제 사용 가능한 flash 계열을 조회해 이어서 시도한다.
-PLAN_MODELS = [
+TEXT_MODELS = [
     "gemini-3.6-flash", "gemini-3.5-flash-lite",
     "gemini-3.1-flash", "gemini-2.5-flash",
 ]
 
 
-def _plan_model_candidates(client):
+def _text_model_candidates(client):
     """정적 후보 + 계정에서 조회한 flash 계열 텍스트 모델(최신순)."""
-    candidates = list(PLAN_MODELS)
+    candidates = list(TEXT_MODELS)
     try:
         discovered = []
         for m in client.models.list():
@@ -1059,134 +1100,6 @@ def _plan_model_candidates(client):
     except Exception:
         pass  # 목록 조회가 안 되면 정적 후보만으로 진행
     return candidates
-
-# 설득 전략 — 상세페이지 전체를 끌고 가는 뼈대. 'auto'면 모델이 상품에
-# 맞는 것을 직접 고른다.
-PLAN_STRATEGIES = {
-    "auto": {
-        "label": "자동 추천",
-        "desc": "",
-    },
-    "problem": {
-        "label": "문제-해결형",
-        "desc": (
-            "고객이 옷에서 겪는 불편(핏이 안 맞음, 소재 불만, 금방 후줄근해짐 등)을 "
-            "먼저 짚고, 이 상품이 그 해결책임을 논리적으로 보여주는 구성"
-        ),
-    },
-    "emotional": {
-        "label": "감성 · 무드형",
-        "desc": (
-            "브랜드 무드와 감성 카피가 중심. 사진의 분위기와 짧은 문장으로 "
-            "'입고 싶다'는 기분을 만드는 구성"
-        ),
-    },
-    "lifestyle": {
-        "label": "라이프스타일형",
-        "desc": (
-            "이 옷을 입고 보내는 하루·상황(출근, 데이트, 주말 나들이)을 "
-            "연출해서 사용 맥락으로 설득하는 구성"
-        ),
-    },
-    "social": {
-        "label": "리뷰 · 신뢰형",
-        "desc": (
-            "후기 인용 자리, 재구매·판매량 수치 자리, 디테일 검증 컷 등 "
-            "사회적 증거와 신뢰 요소를 앞세우는 구성"
-        ),
-    },
-    "compare": {
-        "label": "비교 · 차별형",
-        "desc": (
-            "흔한 일반 제품과 이 상품의 차이를 비교 구조(일반 vs 이 제품)로 "
-            "또렷하게 보여주는 구성"
-        ),
-    },
-    "value": {
-        "label": "구성 · 혜택형",
-        "desc": (
-            "가격 대비 가치, 세트 구성, 혜택을 전면에 내세워 '지금 사는 게 "
-            "이득'임을 강조하는 구성"
-        ),
-    },
-}
-
-# 카피 톤 — 모든 섹션의 문장 말투를 통일한다.
-PLAN_TONES = {
-    "basic": {
-        "label": "깔끔 · 신뢰",
-        "desc": "군더더기 없는 깔끔한 존댓말, 차분하고 신뢰감 있게",
-    },
-    "emotional": {
-        "label": "감성적",
-        "desc": "부드럽고 감성적인 문장, 시적인 표현도 조금 섞어서",
-    },
-    "hip": {
-        "label": "힙 · 캐주얼",
-        "desc": "짧고 힙한 구어체, 친한 또래에게 말하듯 가볍게",
-    },
-    "premium": {
-        "label": "프리미엄",
-        "desc": "절제되고 고급스러운 톤, 짧은 문장, 형용사 남발 금지",
-    },
-}
-
-PLAN_PROMPT = """당신은 한국 온라인 의류 쇼핑몰 상세페이지 기획 전문가입니다.
-아래 상품 정보로, 모바일에서 위→아래로 스크롤하며 읽는 상세페이지의
-스토리보드(기획안)를 작성하세요.
-
-[상품 정보]
-- 상품명: {name}
-- 카테고리: {category}
-- 특징·장점: {features}
-- 소재·핏·디테일: {material}
-- 타겟 고객: {target}
-- 가격대: {price}
-
-[작성 규칙]
-- 설득 전략: {strategy_line}
-- 카피 톤: {tone_desc}. 모든 섹션에서 이 톤을 유지한다.
-- 섹션은 8~10개. 반드시 다음 흐름을 갖춘다: 첫 화면 후킹 → (전략에 맞는
-  공감/문제 제기 또는 무드 연출) → 핵심 장점 소개 → 소재·디테일 →
-  핏·사이즈 안내 → 코디 제안 → 착용컷 갤러리 → 구매 유도 마무리.
-  배송·교환 안내는 맨 마지막.
-- headline(헤드카피)은 15자 안팎으로 짧고 강하게. subcopy는 한 문장.
-- body는 2~4문장. 문장 사이 줄바꿈은 \\n으로.
-- image_guide에는 이 섹션에 어떤 사진을 어떻게 배치할지 구체적으로 쓴다.
-  판매자는 AI 피팅컷 생성기로 얼굴 없는(목 아래 크롭) 착용컷을 만들 수
-  있고, 쓸 수 있는 배경 프리셋은 다음과 같다: {preset_names}.
-  섹션마다 어떤 프리셋 컷을 몇 장 쓰면 좋을지, 누끼컷·디테일 접사가
-  필요한지까지 제안한다.
-- 근거 없는 과장(최고, 1위, 유일 등)과 허위 후기 문구는 쓰지 않는다.
-  리뷰 섹션은 '실제 후기를 넣을 자리'로 안내만 한다.
-- 한국어로 쓴다.
-
-[출력 형식]
-아래 구조의 JSON 하나만 출력한다. 다른 텍스트는 절대 붙이지 않는다.
-{{
-  "one_liner": "이 상품을 한 줄로 정의하는 컨셉 문장",
-  "strategy": {{"main": "사용한 설득 전략 이름", "reason": "이 상품에 이 전략을 쓴 이유 1~2문장"}},
-  "sections": [
-    {{
-      "name": "섹션 이름",
-      "goal": "이 섹션의 역할 한 줄",
-      "headline": "헤드카피",
-      "subcopy": "서브카피 한 문장",
-      "body": "본문 카피",
-      "image_guide": "이미지 연출·배치 가이드",
-      "cta": "구매 유도 문구 (필요한 섹션에만, 없으면 빈 문자열)"
-    }}
-  ],
-  "hashtags": ["상품 등록에 쓸 검색 태그 8~12개, # 없이"]
-}}"""
-
-# 프리셋 한글 라벨 목록 — 기획 프롬프트에서 이미지 가이드 제안에 쓴다.
-PRESET_LABELS = ", ".join(
-    label.replace(" ★", "")
-    for _, items in BACKGROUND_GROUPS
-    for key, label in items
-    if key != "auto"
-)
 
 
 def _friendly_client_error(e):
@@ -1283,110 +1196,6 @@ def index():
         ref_uses=[(key, val["label"]) for key, val in REF_USES.items()],
         shoulders=[(key, val["label"]) for key, val in SHOULDERS.items()],
     )
-
-
-@app.route("/planner")
-def planner():
-    return render_template(
-        "planner.html",
-        shop=session.get("shop"),
-        products=[(key, val["label"]) for key, val in PRODUCTS.items()],
-        strategies=[(key, val["label"]) for key, val in PLAN_STRATEGIES.items()],
-        tones=[(key, val["label"]) for key, val in PLAN_TONES.items()],
-    )
-
-
-@app.route("/api/plan", methods=["POST"])
-def plan():
-    api_key = (request.form.get("api_key") or "").strip()
-    if not api_key:
-        return jsonify(error="Google AI Studio API 키를 입력해주세요."), 400
-
-    name = (request.form.get("name") or "").strip()
-    features = (request.form.get("features") or "").strip()
-    if not name or not features:
-        return jsonify(error="상품명과 특징·장점은 꼭 입력해주세요."), 400
-
-    category = request.form.get("category", "top")
-    if category not in PRODUCTS:
-        category = "top"
-
-    material = (request.form.get("material") or "").strip() or "입력 없음"
-    target = (request.form.get("target") or "").strip() or "20~30대 한국 남성"
-    price = (request.form.get("price") or "").strip() or "입력 없음"
-
-    strategy = request.form.get("strategy", "auto")
-    if strategy not in PLAN_STRATEGIES:
-        strategy = "auto"
-    if strategy == "auto":
-        candidates = " / ".join(
-            f"{v['label']}({v['desc']})"
-            for k, v in PLAN_STRATEGIES.items()
-            if k != "auto"
-        )
-        strategy_line = (
-            "다음 후보 중 이 상품에 가장 잘 맞는 전략을 직접 골라 적용한다: "
-            + candidates
-        )
-    else:
-        s = PLAN_STRATEGIES[strategy]
-        strategy_line = f"반드시 '{s['label']}' 전략으로 구성한다 — {s['desc']}"
-
-    tone = request.form.get("tone", "basic")
-    if tone not in PLAN_TONES:
-        tone = "basic"
-
-    prompt = PLAN_PROMPT.format(
-        name=name[:100],
-        category=PRODUCTS[category]["label"],
-        features=features[:1500],
-        material=material[:800],
-        target=target[:200],
-        price=price[:100],
-        strategy_line=strategy_line,
-        tone_desc=PLAN_TONES[tone]["desc"],
-        preset_names=PRESET_LABELS,
-    )
-
-    client = genai.Client(api_key=api_key)
-    last_err = None
-    for model in _plan_model_candidates(client):
-        try:
-            response = client.models.generate_content(
-                model=model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.5,
-                ),
-            )
-        except genai_errors.ClientError as e:
-            # 모델이 없거나 은퇴했으면(no longer available) 다음 후보로 넘어간다.
-            msg = (e.message or "").lower()
-            if e.code == 404 or "no longer available" in msg or "not found" in msg:
-                last_err = e
-                continue
-            status = 401 if e.code in (401, 403) else 400
-            return jsonify(error=_friendly_client_error(e)), status
-        except genai_errors.APIError as e:
-            return jsonify(error=f"Gemini 요청 중 오류가 발생했습니다: {e.message}"), 502
-
-        text = (response.text or "").strip()
-        try:
-            data = _extract_json(text)
-        except ValueError:
-            return jsonify(
-                error="기획안 형식을 읽지 못했습니다. 한 번 더 시도해주세요."
-            ), 502
-        if not isinstance(data, dict) or not data.get("sections"):
-            return jsonify(
-                error="기획안이 비어 있습니다. 한 번 더 시도해주세요."
-            ), 502
-        return jsonify(plan=data, model=model)
-
-    msg = last_err.message if last_err else "알 수 없는 오류"
-    return jsonify(error=f"사용 가능한 텍스트 모델을 찾지 못했습니다: {msg}"), 502
-
 
 
 # ============================================================
@@ -1632,7 +1441,7 @@ def coordinate():
     )
     deadline = time.monotonic() + REQUEST_BUDGET_S
     last_err = None
-    for model in _plan_model_candidates(client):
+    for model in _text_model_candidates(client):
         if deadline - time.monotonic() < MIN_ATTEMPT_S:
             break
         try:
@@ -1907,6 +1716,7 @@ def process():
             prompt = template.format(
                 focus=product["focus"],
                 framing=product["framing"],
+                square_frame=SQUARE_FRAME_RULE.format(focus=product["focus"]),
                 face_rule=face_rule,
                 garment_lock=GARMENT_LOCK_RULE.format(focus=product["focus"]),
                 scene_block=block,

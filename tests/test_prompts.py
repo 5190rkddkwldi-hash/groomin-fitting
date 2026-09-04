@@ -169,7 +169,20 @@ def _fill(template, **over):
         realism_rule=srv.REALISM_RULE,
     )
     values.update(over)
+    values.setdefault(
+        "square_frame", srv.SQUARE_FRAME_RULE.format(focus=values["focus"]))
     return template.format(**values)
+
+
+def test_정사각_구도_지시는_새_장면에만_들어간다():
+    """장면 유지 모드에 구도 지시를 섞으면 배경이 바뀐다 (과거 실사용 버그)."""
+    assert "{square_frame}" in srv.PROMPT_NEW_SCENE
+    assert "square_frame" not in srv.PROMPT_SAME_SCENE
+    assert "SQUARE" in srv.SQUARE_FRAME_RULE
+
+
+def test_비율은_상수로_못박혀_있다():
+    assert srv.IMAGE_ASPECT_RATIO == "1:1"
 
 
 def test_새_장면_프롬프트가_빈칸_없이_조립된다():
@@ -310,4 +323,4 @@ def test_폼_텍스트_한도가_업로드_한도와_같다():
 
 
 def test_기획_모델_후보가_최신순이다():
-    assert srv.PLAN_MODELS[0].startswith("gemini-3")
+    assert srv.TEXT_MODELS[0].startswith("gemini-3")

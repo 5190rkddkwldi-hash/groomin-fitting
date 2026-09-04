@@ -65,7 +65,7 @@ class FakeModels:
         outcome = behavior(model, prompt) if callable(behavior) else behavior
         if isinstance(outcome, Exception):
             raise outcome
-        # 텍스트 모델(코디·기획)처럼 JSON 본문이 필요한 경우엔
+        # 텍스트 모델(코디)처럼 JSON 본문이 필요한 경우엔
         # behavior 가 FakeResponse 를 통째로 돌려줄 수 있다.
         if isinstance(outcome, FakeResponse):
             return outcome

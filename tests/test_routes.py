@@ -58,9 +58,13 @@ def test_맞는_코드로_입장(client):
     assert client.get("/").status_code == 200
 
 
-def test_로그인하면_두_페이지_모두_열린다(logged_in):
+def test_로그인하면_생성_화면이_열린다(logged_in):
     assert logged_in.get("/").status_code == 200
-    assert logged_in.get("/planner").status_code == 200
+
+
+def test_없어진_기획_페이지는_404(logged_in):
+    assert logged_in.get("/planner").status_code == 404
+    assert logged_in.post("/api/plan", json={"name": "반팔"}).status_code == 404
 
 
 def test_로그아웃(logged_in):
@@ -155,6 +159,67 @@ def test_직접_고른_프리셋도_컷마다_변주가_붙는다(logged_in, fak
                        content_type="multipart/form-data")
         seen.add(fake_gemini["prompts"][0])
     assert len(seen) == 3, "컷 번호가 다르면 변주 축도 달라져야 한다"
+
+
+# ------------------------------------------------------------------ 1:1 비율
+
+def test_모든_컷은_정사각으로_요청된다(logged_in, fake_gemini):
+    """비율은 프롬프트가 아니라 API 파라미터로 못박아야 지켜진다.
+    이게 빠지면 모델이 올린 사진(폰 3:4)의 비율을 그대로 따라간다."""
+    logged_in.post("/api/process", data=upload(mode="quick", count="3"),
+                   content_type="multipart/form-data")
+    assert fake_gemini["calls"], "이미지 요청이 한 번도 안 나갔다"
+    for call in fake_gemini["calls"]:
+        assert call["config"].image_config.aspect_ratio == "1:1"
+
+
+def test_포즈_모음도_정사각으로_요청된다(logged_in, fake_gemini):
+    logged_in.post("/api/process",
+                   data=upload(mode="poseset", reference=make_data_url(),
+                               count="2"),
+                   content_type="multipart/form-data")
+    for call in fake_gemini["calls"]:
+        assert call["config"].image_config.aspect_ratio == "1:1"
+
+
+def test_AI_자동_코디_컷도_정사각으로_요청된다(logged_in, fake_gemini):
+    """사용자가 실제로 겪은 경로 — 코디 문장을 실어 보내는 컷."""
+    logged_in.post("/api/process",
+                   data=upload(styling="auto", styling_desc="white tee and "
+                               "charcoal wide trousers"),
+                   content_type="multipart/form-data")
+    call = fake_gemini["calls"][0]
+    assert call["config"].image_config.aspect_ratio == "1:1"
+    assert "SQUARE" in fake_gemini["prompts"][0], "구도 지시에도 정사각을 알려야 한다"
+
+
+def test_비율_옵션을_모르는_모델이면_빼고_다시_시도한다(logged_in, fake_gemini):
+    """옛 모델이 image_config 를 거부해도 컷은 나와야 한다."""
+    calls = fake_gemini["calls"]
+
+    def behavior(model, prompt):
+        if calls and calls[-1]["config"].image_config is not None:
+            return client_error(400, "Unknown name \"aspect_ratio\"")
+        return "ok"
+
+    fake_gemini["behavior"] = behavior
+    r = logged_in.post("/api/process", data=upload(),
+                       content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert len(r.get_json()["results"]) == 1
+    assert calls[-1]["config"].image_config is None
+    assert calls[-1]["model"] == calls[0]["model"], "같은 모델로 다시 시도해야 한다"
+
+
+def test_비율과_무관한_400은_비율을_빼고_삼키지_않는다(logged_in, fake_gemini):
+    """안전필터 같은 400 까지 '비율 문제'로 오해하면 세로 컷이 조용히 돌아온다."""
+    fake_gemini["behavior"] = lambda m, p: client_error(400, "안전 정책 위반")
+    r = logged_in.post("/api/process", data=upload(),
+                       content_type="multipart/form-data")
+    assert r.status_code == 502  # 후보를 다 돌고도 실패 → '혼잡' 안내
+    assert len(fake_gemini["calls"]) == len(srv.IMAGE_MODELS), "비율만 빼고 더 불렀다"
+    for call in fake_gemini["calls"]:
+        assert call["config"].image_config is not None
 
 
 def test_포즈_모음은_장면_유지_템플릿을_쓴다(logged_in, fake_gemini):
@@ -314,19 +379,6 @@ def test_중간에_끊겨도_만든_컷은_돌려준다(logged_in, fake_gemini):
     assert body["warning"]
 
 
-# ---------------------------------------------------------------- 기획(planner)
-
-def test_기획은_상품명과_특징이_필요하다(logged_in, fake_gemini):
-    r = logged_in.post("/api/plan", json={"api_key": "k", "name": "", "features": ""})
-    assert r.status_code == 400
-
-
-def test_기획_요청에도_키가_필요하다(logged_in, fake_gemini):
-    r = logged_in.post("/api/plan", json={"name": "반팔", "features": "면 100%"})
-    assert r.status_code == 400
-    assert "키" in r.get_json()["error"]
-
-
 # ---------------------------------------------------------------- 업로드 한도
 
 def test_너무_큰_요청은_친절한_413(logged_in):
@@ -477,7 +529,7 @@ def test_코디가_비면_친절한_오류(logged_in, fake_gemini):
 
 
 def test_코디도_은퇴한_모델은_건너뛴다(logged_in, fake_gemini):
-    죽은모델 = srv.PLAN_MODELS[0]
+    죽은모델 = srv.TEXT_MODELS[0]
 
     def behavior(model, prompt):
         if model == 죽은모델:

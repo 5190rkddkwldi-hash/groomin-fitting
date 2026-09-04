@@ -67,13 +67,13 @@ PR 전에 `pytest` 가 초록불인지 확인해 주세요. GitHub Actions 에�
 ## 4. 저장소 구조
 
 ```
-app.py                  전부 여기에 있습니다 (약 1,400줄)
+app.py                  전부 여기에 있습니다 (약 1,800줄)
   ├─ 설정·상수          모델 후보, 업로드 한도, 로그인 코드
   ├─ 프롬프트 재료      FACE_RULE, GARMENT_LOCK_RULE, BACKGROUNDS, POSES ...
   ├─ 프롬프트 템플릿    PROMPT_NEW_SCENE / PROMPT_SAME_SCENE
-  ├─ 기획(planner)      PLAN_PROMPT, PLAN_STRATEGIES, PLAN_TONES
-  └─ 라우트             /login /  /planner  /api/process  /api/plan
-templates/              index(생성) · planner(기획) · login
+  ├─ 코디(텍스트모델)   COORDINATE_PROMPT, TEXT_MODELS
+  └─ 라우트             /login /  /api/process  /api/coordinate
+templates/              index(생성) · login
 tests/                  네트워크 없는 검증
 render.yaml             Render 배포 설정
 ```
@@ -176,8 +176,16 @@ Werkzeug 3.1부터 파일이 아닌 폼 필드 합계가 기본 500KB로 제한�
 안전필터에 걸리면 `response.parts` 가 `None` 입니다. 그냥 순회하면 500이 납니다.
 `response.parts or []` 로 방어하고, 한 번은 재시도하세요.
 
+**출력 비율은 프롬프트로 부탁하면 안 지켜집니다** (2026-09-04)
+이미지 모델은 아무 말이 없으면 **받은 참고 사진의 비율을 그대로 따라갑니다.**
+폰 사진(3:4)을 넣으면 컷도 세로로 나옵니다. 프롬프트에 "정사각으로" 라고
+써도 소용없습니다. `image_config=ImageConfig(aspect_ratio=...)` 로 못박으세요
+(`_image_gen_config`). 반대로 비율만 바꾸고 구도를 안 알려주면 상품이 프레임
+밖으로 밀리므로, 새 장면 프롬프트에는 `SQUARE_FRAME_RULE` 을 함께 넣습니다.
+(장면 유지 프롬프트에는 넣지 않습니다 — 5-4 참고.)
+
 **모델은 은퇴합니다**
-텍스트·이미지 모델 모두 후보 목록(`PLAN_MODELS`, `IMAGE_MODELS`)을 두고
+텍스트·이미지 모델 모두 후보 목록(`TEXT_MODELS`, `IMAGE_MODELS`)을 두고
 404/`no longer available` 이면 다음 후보로 넘어갑니다. 새 모델이 나오면
 목록 앞에 추가하세요.
 
